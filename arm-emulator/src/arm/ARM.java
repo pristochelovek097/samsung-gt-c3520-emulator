@@ -458,7 +458,8 @@ public final class ARM {
                 boolean restoreSpsr = bit(insn, 22); // '^': CPSR := SPSR
                 int base = readReg(rn);
                 int n = Integer.bitCount(list);
-                int a = u ? base : base - 4 * n;   // STMDB/LDMIA
+                // ARM LDM/STM: P/U задают стартовый адрес (IA/IB/DA/DB)
+                int a = u ? base + (p ? 4 : 0) : base - 4 * n + (p ? 0 : 4);
                 for (int i = 0; i < 16; i++) if (bit(list, i)) {
                     if (l) {
                         int v = rd32(a);
