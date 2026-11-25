@@ -19,7 +19,7 @@ public final class Main {
         TraceMemory tracer = traceIO ? new TraceMemory() : null;
         Memory mem = tracer != null ? tracer : new Memory();
         // При холодном старте из ROOT физический адрес 0 не содержит USB-агента.
-        mem.load(boot, 0);
+        if (!startRoot) mem.load(boot, 0);
         // При холодном старте из ROOT быстрая SRAM 0x2FFE0000 не содержит USB-агента.
         if (!startRoot) mem.load(boot, 0x2ffe0000);
         else {
