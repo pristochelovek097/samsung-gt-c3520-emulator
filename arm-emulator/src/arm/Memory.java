@@ -3,7 +3,7 @@ package arm;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Sparse 32-bit little-endian address space: 4 KB pages allocated on demand. */
+/** Sparse 32-bit little-endian address space with flat arrays for flash/SDRAM/SRAM. */
 public class Memory {
     private static final int PAGE_BITS = 12;
     private static final int PAGE_SIZE = 1 << PAGE_BITS;
@@ -11,6 +11,24 @@ public class Memory {
 
     private final Map<Integer, byte[]> pages = new HashMap<>();
     private final Map<Integer, Integer> mmio = new HashMap<>();
+
+    // Плоские физические области PNX4910: 32 МБ NOR/flash, 32 МБ SDRAM, 1 МБ SRAM.
+    private static final int FLASH_BASE = 0xC0000000, FLASH_SIZE = 0x02000000;
+    private static final int SDRAM_BASE = 0xC2000000, SDRAM_SIZE = 0x02000000;
+    private static final int SRAM_BASE  = 0xC9900000, SRAM_SIZE  = 0x00200000;
+    private final byte[] flash = new byte[FLASH_SIZE];
+    private final byte[] sdram = new byte[SDRAM_SIZE];
+    private final byte[] sram  = new byte[SRAM_SIZE];
+
+    private byte[] flat(int addr) {
+        int a = addr & 0xFFFFFFFF;
+        if ((a & 0xFE000000) == FLASH_BASE) return flash;
+        if ((a & 0xFE000000) == SDRAM_BASE) return sdram;
+        if ((a & 0xFFE00000) == SRAM_BASE) return sram;
+        return null;
+    }
+
+    private int flatOff(int addr) { return addr & 0x01FFFFFF; }
 
     public void setMMIO(int addr, int value) { mmio.put(addr & ~3, value); }
 
@@ -38,17 +56,35 @@ public class Memory {
         Integer fixed = mmio.get(addr & ~3);
         if (fixed != null) return fixed;
         int a = addr & ~3;
+        byte[] f = flat(a);
+        if (f != null) {
+            int o = flatOff(a);
+            return (f[o] & 0xFF) | ((f[o + 1] & 0xFF) << 8)
+                 | ((f[o + 2] & 0xFF) << 16) | ((f[o + 3] & 0xFF) << 24);
+        }
         return (read8(a) & 0xFF) | ((read8(a + 1) & 0xFF) << 8)
              | ((read8(a + 2) & 0xFF) << 16) | ((read8(a + 3) & 0xFF) << 24);
     }
 
     public void write32(int addr, int value) {
         int a = addr & ~3;
+        byte[] f = flat(a);
+        if (f != null) {
+            int o = flatOff(a);
+            f[o] = (byte) value; f[o + 1] = (byte) (value >>> 8);
+            f[o + 2] = (byte) (value >>> 16); f[o + 3] = (byte) (value >>> 24);
+            return;
+        }
         for (int i = 0; i < 4; i++) write8(a + i, (byte) (value >>> (8 * i)));
     }
 
     public int read16(int addr) {
         int a = addr & ~1;
+        byte[] f = flat(a);
+        if (f != null) {
+            int o = flatOff(a);
+            return (f[o] & 0xFF) | ((f[o + 1] & 0xFF) << 8);
+        }
         byte[] p = page(a, false);
         if (p == null) return 0;
         int o = a & PAGE_MASK;
@@ -60,16 +96,27 @@ public class Memory {
     }
 
     public void write16(int addr, int value) {
+        int a = addr & ~1;
+        byte[] f = flat(a);
+        if (f != null) {
+            int o = flatOff(a);
+            f[o] = (byte) value; f[o + 1] = (byte) (value >>> 8);
+            return;
+        }
         write8(addr, (byte) value);
         write8(addr + 1, (byte) (value >>> 8));
     }
 
     public int read8(int addr) {
+        byte[] f = flat(addr);
+        if (f != null) return f[flatOff(addr)] & 0xFF;
         byte[] p = page(addr, false);
         return p == null ? 0 : p[addr & PAGE_MASK] & 0xFF;
     }
 
     public void write8(int addr, int value) {
+        byte[] f = flat(addr);
+        if (f != null) { f[flatOff(addr)] = (byte) value; return; }
         byte[] p = page(addr, true);
         p[addr & PAGE_MASK] = (byte) value;
     }

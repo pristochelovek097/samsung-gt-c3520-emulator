@@ -80,8 +80,12 @@ public final class ARM {
         if ((newMode & 0x1F) == 0x11) for (int k = 0; k < 5; k++) r[8 + k] = fiq[k];
     }
 
+    private int tlbVaTag = -1, tlbPaBase = 0;
+
     private int translate(int va) {
         if ((cp15[1] & 1) == 0) return va;         // MMU выключен
+        int tag = va & 0xFFFFF000;
+        if (tag == tlbVaTag) return tlbPaBase | (va & 0xFFF);
         int ttbr = cp15[2] & 0xFFFFC000;
         int l1 = mem.read32(ttbr + ((va >>> 20) << 2));
         int type = l1 & 3;
@@ -90,8 +94,8 @@ public final class ARM {
             int l2base = l1 & 0xFFFFF000;
             int l2 = mem.read32(l2base + (((va >>> 12) & 0xFF) << 2));
             int t = l2 & 3;
-            if (t == 2) return (l2 & 0xFFFFF000) | (va & 0xFFF);
-            if (t == 1) return (l2 & 0xFFFF0000) | (va & 0xFFFF);
+            if (t == 2) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFFF000; return tlbPaBase | (va & 0xFFF); }
+            if (t == 1) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFF0000; return tlbPaBase | (va & 0xFFFF); }
         }
         return va;                                                   // fallback: identity
     }
@@ -375,7 +379,10 @@ public final class ARM {
             int crn = (insn >>> 16) & 0xF;              // CRn: биты 19-16
             int rd = (insn >>> 12) & 0xF;               // Rd: биты 15-12
             if (bit(insn, 20)) r[rd] = cp15[crn];       // MRC
-            else cp15[crn] = readReg(rd);               // MCR
+            else {
+                cp15[crn] = readReg(rd);                 // MCR
+                if (crn == 1 || crn == 2 || crn == 3 || crn == 7 || crn == 8) tlbVaTag = -1;
+            }
             return;
         }
 

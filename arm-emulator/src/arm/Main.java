@@ -146,7 +146,7 @@ public final class Main {
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
-            if (startRoot) { int k = cpu.r[15] & 0xFFFFF000; pcHist.merge(k, 1, Integer::sum); }
+            if (startRoot) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
             if (saveSnap && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
                 StringBuilder sb = new StringBuilder();
@@ -176,10 +176,9 @@ public final class Main {
                 regTrace.printf("%08x %08x%s %08x%n", cpu.r[15], mem.read32(cpu.r[15] & ~1), sb, cpu.cpsr);
             }
             // Системный тик: раз в 50000 инструкций INTC выставляет pending IRQ.
-            if (!startRoot && !fromSnap && i > 1000 && (i % 50000) == 0) {
-                int irq = 1 + ((i / 50000) % 30);
-                mem.setMMIO(0x7000102c, irq);
-                if ((cpu.cpsr & 0x1F) != 0x12) cpu.injectIRQ();
+            if (!fromSnap && i > 1000 && (i % 100000) == 0 && (cpu.cpsr & 0x80) == 0) {
+                mem.setMMIO(0x7000102c, 1);
+                cpu.injectIRQ();
             }
             if (tracer != null) tracer.notePC(cpu.r[15]);
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
