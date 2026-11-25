@@ -144,7 +144,9 @@ public final class Main {
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
+        java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
+            if (startRoot) { int k = cpu.r[15] & 0xFFFFF000; pcHist.merge(k, 1, Integer::sum); }
             if (saveSnap && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
                 StringBuilder sb = new StringBuilder();
@@ -196,6 +198,19 @@ public final class Main {
             for (int idx : new int[]{0x000,0x2ff,0x300,0xa00,0xc00,0xfff})
                 System.out.printf("%03x=%08x ", idx, mem.read32(0xc3bc4000 + idx*4));
             System.out.println();
+        }
+        if (startRoot) {
+            System.out.println("[HOTPC] " + pcHist.entrySet().stream()
+                .sorted((a,b) -> Integer.compare(b.getValue(), a.getValue())).limit(12)
+                .map(e -> String.format("%08x:%d", e.getKey(), e.getValue()))
+                .reduce("", (a,b) -> a + " " + b));
+            int bestBase = -1, bestNz = 0;
+            for (int a = 0x30000000; a < 0x32000000; a += 0x1000) {
+                int nz = 0;
+                for (int k = a; k < a + 0x1000; k += 16) if ((mem.read32(k) & 0xFFFF) != 0) nz++;
+                if (nz > bestNz) { bestNz = nz; bestBase = a; }
+            }
+            System.out.printf("[FB] best SDRAM candidate=%08x nonzero16=%d%n", bestBase, bestNz);
         }
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }

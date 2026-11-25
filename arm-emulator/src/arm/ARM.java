@@ -18,7 +18,7 @@ public final class ARM {
     private int spsr;
     public Runnable afterZeroFill;
     public boolean traceAll;
-    public boolean fastPaths = true;
+    public boolean fastPaths = false;   // ручные ускорители ломают регистры — по умолчанию ВЫКЛ
     private long zeroRun;
 
     public void injectIRQ() { if (!halted) raiseIRQ(r[15]); }
