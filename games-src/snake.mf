@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+MIDlet-Name: SNAKE 3310
+MIDlet-Version: 1.0.0
+MIDlet-Vendor: xbox-emulator
+MIDlet-1: SNAKE 3310,,SnakeMIDlet
+MicroEdition-Configuration: CLDC-1.0
+MicroEdition-Profile: MIDP-1.0

@@ -1,0 +1,7 @@
+Manifest-Version: 1.0
+MIDlet-Name: BRICKS X
+MIDlet-Version: 1.0.0
+MIDlet-Vendor: xbox-emulator
+MIDlet-1: BRICKS X,,BricksMIDlet
+MicroEdition-Configuration: CLDC-1.0
+MicroEdition-Profile: MIDP-1.0

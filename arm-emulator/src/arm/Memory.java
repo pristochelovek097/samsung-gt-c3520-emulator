@@ -1,0 +1,85 @@
+package arm;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Sparse 32-bit little-endian address space: 4 KB pages allocated on demand. */
+public class Memory {
+    private static final int PAGE_BITS = 12;
+    private static final int PAGE_SIZE = 1 << PAGE_BITS;
+    private static final int PAGE_MASK = PAGE_SIZE - 1;
+
+    private final Map<Integer, byte[]> pages = new HashMap<>();
+    private final Map<Integer, Integer> mmio = new HashMap<>();
+
+    public void setMMIO(int addr, int value) { mmio.put(addr & ~3, value); }
+
+    private byte[] page(int addr, boolean create) {
+        int key = addr >>> PAGE_BITS;
+        byte[] p = pages.get(key);
+        if (p == null && create) { p = new byte[PAGE_SIZE]; pages.put(key, p); }
+        return p;
+    }
+
+    public void load(String file, int address) throws Exception {
+        byte[] b = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(file));
+        load(b, address);
+    }
+
+    public void load(byte[] b, int address) {
+        for (int i = 0; i < b.length; i++) write8(address + i, b[i]);
+    }
+
+    public void load(byte[] b, int offset, int length, int address) {
+        for (int i = 0; i < length && offset + i < b.length; i++) write8(address + i, b[offset + i]);
+    }
+
+    public int read32(int addr) {
+        Integer fixed = mmio.get(addr & ~3);
+        if (fixed != null) return fixed;
+        int a = addr & ~3;
+        return (read8(a) & 0xFF) | ((read8(a + 1) & 0xFF) << 8)
+             | ((read8(a + 2) & 0xFF) << 16) | ((read8(a + 3) & 0xFF) << 24);
+    }
+
+    public void write32(int addr, int value) {
+        int a = addr & ~3;
+        for (int i = 0; i < 4; i++) write8(a + i, (byte) (value >>> (8 * i)));
+    }
+
+    public int read16(int addr) {
+        int a = addr & ~1;
+        byte[] p = page(a, false);
+        if (p == null) return 0;
+        int o = a & PAGE_MASK;
+        if (o + 1 >= PAGE_SIZE) {
+            byte[] q = page(a + 1, false);
+            return q == null ? p[o] & 0xFF : (p[o] & 0xFF) | ((q[0] & 0xFF) << 8);
+        }
+        return (p[o] & 0xFF) | ((p[o + 1] & 0xFF) << 8);
+    }
+
+    public void write16(int addr, int value) {
+        write8(addr, (byte) value);
+        write8(addr + 1, (byte) (value >>> 8));
+    }
+
+    public int read8(int addr) {
+        byte[] p = page(addr, false);
+        return p == null ? 0 : p[addr & PAGE_MASK] & 0xFF;
+    }
+
+    public void write8(int addr, int value) {
+        byte[] p = page(addr, true);
+        p[addr & PAGE_MASK] = (byte) value;
+    }
+
+    public void memset(int from, int to, int value) {
+        int v = value & 0xFF;
+        for (int a = from; a < to; a++) write8(a, (byte) v);
+    }
+
+    public void memcpy(int dst, int src, int length) {
+        for (int i = 0; i < length; i++) write8(dst + i, read8(src + i));
+    }
+}

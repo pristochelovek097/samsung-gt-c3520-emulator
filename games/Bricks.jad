@@ -1,0 +1,8 @@
+MIDlet-1: BRICKS X,,BricksMIDlet
+MIDlet-Jar-Size: 3598
+MIDlet-Jar-URL: Bricks.jar
+MIDlet-Name: BRICKS X
+MIDlet-Vendor: xbox-emulator
+MIDlet-Version: 1.0.0
+MicroEdition-Configuration: CLDC-1.0
+MicroEdition-Profile: MIDP-1.0

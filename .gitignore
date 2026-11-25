@@ -1,0 +1,14 @@
+*.smd
+*.cla
+*.bin
+*.rar
+*.zip
+*.exe
+*.dll
+*.map
+*.class
+build/
+out/
+__pycache__/
+*.pyc
+*.log

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J2ME PHONE OS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="desk-glow"></div>
+
+<div class="phone">
+  <div class="speaker"><span></span></div>
+  <div class="statusbar">
+    <div class="sig"><i></i><i></i><i></i><i></i></div>
+    <span class="operator">J2ME.NET</span>
+    <span class="clock" id="clock">00:00</span>
+    <span class="batt">▰▰▰▱</span>
+  </div>
+
+  <div class="screen">
+    <!-- ЗАГРУЗКА -->
+    <section class="view active" id="view-boot">
+      <div class="boot-logo">
+        <div class="boot-mark">◉</div>
+        <h1>J2ME<span>OS</span></h1>
+        <p>MOBILE SYSTEM 2.0</p>
+      </div>
+      <div class="boot-progress"><i id="bootBar"></i></div>
+      <div class="boot-line" id="bootLine">Загрузка ядра CLDC...</div>
+    </section>
+
+    <!-- МЕНЮ -->
+    <section class="view" id="view-menu">
+      <div class="view-title">ГЛАВНОЕ МЕНЮ <span id="menuCount"></span></div>
+      <div class="grid" id="mainGrid">
+        <button class="tile" data-view="games" data-name="ИГРЫ"><span class="ico">🎮</span><span>Игры</span></button>
+        <button class="tile" data-view="profiles" data-name="ПРОФИЛИ"><span class="ico">📱</span><span>Профили</span></button>
+        <button class="tile" data-view="records" data-name="РЕКОРДЫ"><span class="ico">🏆</span><span>Рекорды</span></button>
+        <button class="tile" data-view="settings" data-name="НАСТРОЙКИ"><span class="ico">⚙️</span><span>Настройки</span></button>
+        <button class="tile" data-view="about" data-name="ПРОШИВКИ"><span class="ico">💾</span><span>Прошивки</span></button>
+        <button class="tile" data-view="console" data-name="ТЕРМИНАЛ"><span class="ico">▮</span><span>Терминал</span></button>
+      </div>
+      <div class="ticker" id="ticker">Добро пожаловать. Выбери раздел.</div>
+    </section>
+
+    <!-- СПИСОК ИГР -->
+    <section class="view" id="view-games">
+      <div class="view-title">МОИ ИГРЫ <span class="count" id="gamesCount">0</span></div>
+      <div class="list" id="gameList"></div>
+    </section>
+
+    <!-- ДЕТАЛИ ИГРЫ -->
+    <section class="view" id="view-detail">
+      <div class="cover" id="detailCover"><div class="cover-pixel" id="detailPixel"></div><span id="detailIcon">🎮</span></div>
+      <h2 class="detail-name" id="detailName">—</h2>
+      <p class="detail-desc" id="detailDesc"></p>
+      <div class="meta-row"><span>JAR</span><b id="detailSize">—</b><span>MIDP 1.0</span></div>
+      <div class="field"><label>ЯДРО ЭМУЛЯТОРА</label>
+        <select id="selEngine"><option value="own-shell">OwnJ2ME Phone — оболочка прошивки</option><option value="own">OwnJ2ME — только игра</option><option value="freej2me">FreeJ2ME — opensource</option></select>
+      </div>
+      <div class="field"><label>УСТРОЙСТВО</label>
+        <select id="selPhone"><option>Standard</option><option>Nokia</option><option>Siemens</option><option>Motorola</option></select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>ШИРИНА</label><input id="selW" type="number" value="240" min="120" max="640"></div>
+        <div class="field"><label>ВЫСОТА</label><input id="selH" type="number" value="320" min="120" max="960"></div>
+        <div class="field"><label>МАСШТАБ</label><input id="selScale" type="number" value="2" min="1" max="5"></div>
+      </div>
+      <button class="launch" id="launchBtn">▶ ЗАПУСТИТЬ</button>
+      <div class="controls-hint">↑↓←→ / WASD — навигация · ENTER — выбор · ESC — назад</div>
+    </section>
+
+    <!-- ПРОФИЛИ -->
+    <section class="view" id="view-profiles">
+      <div class="view-title">ПРОФИЛИ УСТРОЙСТВ</div>
+      <div class="profile-list">
+        <div class="profile"><span class="pico">📟</span><div><b>Standard</b><small>Базовая раскладка, любые JAR</small></div></div>
+        <div class="profile"><span class="pico">🔵</span><div><b>Nokia</b><small>Классические кнопки Nokia, 2-4-6-8</small></div></div>
+        <div class="profile"><span class="pico">🟢</span><div><b>Siemens</b><small>Раскладка Siemens S/N-серии</small></div></div>
+        <div class="profile"><span class="pico">🟡</span><div><b>Motorola</b><small>Раскладка Motorola V-серии</small></div></div>
+      </div>
+      <p class="note">Профиль меняет только раскладку клавиш и размер экрана. Это эмуляция <b>среды J2ME</b>, а не прошивки телефона — реальные ROM-образы проприетарны.</p>
+    </section>
+
+    <!-- РЕКОРДЫ -->
+    <section class="view" id="view-records">
+      <div class="view-title">РЕКОРДЫ И СТАТИСТИКА</div>
+      <div class="stat-box"><div><b id="statGames">0</b><span>игр в библиотеке</span></div><div><b id="statRuns">0</b><span>запусков</span></div><div><b id="statNow">0</b><span>сейчас в эмуляторе</span></div></div>
+      <div class="view-title small">АКТИВНЫЕ ПРОЦЕССЫ</div>
+      <div id="runningList" class="running-list">Пусто</div>
+    </section>
+
+    <!-- НАСТРОЙКИ -->
+    <section class="view" id="view-settings">
+      <div class="view-title">НАСТРОЙКИ СИСТЕМЫ</div>
+      <label class="switch"><span>Звук MIDlet</span><input type="checkbox" id="optSound" checked><i></i></label>
+      <label class="switch"><span>Полный экран (масштаб 3)</span><input type="checkbox" id="optFull"><i></i></label>
+      <label class="switch"><span>Геймпад в меню</span><input type="checkbox" id="optPad" checked><i></i></label>
+      <p class="note">Своё ядро <b>OwnJ2ME</b> написано с нуля: жизненный цикл MIDlet, API Display/Canvas/Graphics/Font, профили устройств, загрузчик JAR/JAD и AWT-хост. Режим <b>«оболочка прошивки»</b> рисует экран телефона со статус-баром и сеткой приложений прямо в окне эмулятора; левая софт-клавиша (<kbd>Q</kbd>) возвращает туда из игры. Альтернатива — <b>FreeJ2ME</b> (GPL-3.0).</p>
+      <div class="note" id="firmwareStatus">Прошивка: проверка...</div>
+      <button class="launch small" id="clearLog">Очистить логи</button>
+    </section>
+
+    <!-- ПРОШИВКИ -->
+    <section class="view" id="view-about">
+      <div class="view-title">ПРОШИВКИ И ДАМПЫ</div>
+      <div class="article">
+        <h3>Что дампы прошивок на самом деле</h3>
+        <p>ROM-образы Nokia, Siemens, Motorola и Sony Ericsson — это проприетарный код производителей. Их публикация и скачивание с «архивов» нарушает авторские права, а такие архивы часто напичканы троянами.</p>
+        <h3>Почему они не нужны для J2ME</h3>
+        <p>J2ME — это <b>слой исполнения</b> (CLDC + MIDP), а не сама прошивка. FreeJ2ME реализует этот слой и профили устройств, поэтому JAR-игры запускаются без ROM. Оболочка телефона рисуется отдельно — как раз этот дашборд.</p>
+        <h3>Хочешь настоящую прошивку?</h3>
+        <p>Легальный путь — снять дамп со <b>своего</b> аппарата (сервисный кабель/прошивальщик, для Nokia — Phoenix/NSU, для Siemens — соответствующие сервисные утилиты) и использовать его только для личного бэкапа. Ссылки на чужие дампы я не присылаю.</p>
+        <h3>А Xbox 360?</h3>
+        <p>Это уже <b>Xenia</b>, а не Xemu (Xemu — оригинальный Xbox). Xenia с открытым исходником и работает без BIOS-дампов — свои образы дисков. Вернёмся к этому позже.</p>
+      </div>
+    </section>
+
+    <!-- ТЕРМИНАЛ -->
+    <section class="view" id="view-console">
+      <div class="view-title">ТЕРМИНАЛ</div>
+      <div class="term" id="term">$ j2me-os v2.0 ready
+$ type 'help' for commands
+</div>
+      <div class="term-input"><span>$</span><input id="termInput" autocomplete="off" spellcheck="false"></div>
+    </section>
+  </div>
+
+  <div class="navbar">
+    <button class="sk" id="skLeft">МЕНЮ</button>
+    <button class="sk sk-home" data-view="menu">◉</button>
+    <button class="sk" id="skRight">ВЫБОР</button>
+  </div>
+  <div class="keypad" aria-hidden="true">
+    <div class="keyrow"><span>1</span><span>2 abc</span><span>3 def</span></div>
+    <div class="keyrow"><span>4 ghi</span><span>5 jkl</span><span>6 mno</span></div>
+    <div class="keyrow"><span>7 pqrs</span><span>8 tuv</span><span>9 wxyz</span></div>
+    <div class="keyrow"><span>*</span><span>0</span><span>#</span></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

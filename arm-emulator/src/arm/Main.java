@@ -1,0 +1,185 @@
+package arm;
+
+/** CLI: run the Samsung C3520 bootloader in the ARM9 interpreter. */
+public final class Main {
+    public static void main(String[] args) throws Exception {
+        String dir = args.length > 0 ? args[0] : "/home/bogdan/Downloads/C3520XELJ1";
+        int steps = args.length > 1 ? Integer.parseInt(args[1]) : 500;
+        boolean trace = args.length < 3 || !"quiet".equals(args[2]);
+
+        String boot = dir + "/C3520XFLJ1_BIN/C3520XELaFleur.bootloader";
+        boolean traceIO = false;
+        for (String a : args) if ("--trace-mmio".equals(a)) traceIO = true;
+        boolean startRoot = false;
+        for (String a : args) if ("--start-root".equals(a)) startRoot = true;
+        TraceMemory tracer = traceIO ? new TraceMemory() : null;
+        Memory mem = tracer != null ? tracer : new Memory();
+        // При холодном старте из ROOT физический адрес 0 не содержит USB-агента.
+        if (!startRoot) mem.load(boot, 0);
+        // При холодном старте из ROOT быстрая SRAM 0x2FFE0000 не содержит USB-агента.
+        if (!startRoot) mem.load(boot, 0x2ffe0000);
+        else {
+            byte[] root = java.nio.file.Files.readAllBytes(
+                java.nio.file.Paths.get(dir + "/C3520XFLJ1_BIN/C3520XELaFleur.cla/ER_FLASH_CB_ROOT"));
+            mem.load(root, 0x2000, 0x10000, 0);   // физический 0x0 зеркалит ROOT
+        }
+        // Загружаем полезную нагрузку .cla-образов по их физическим адресам
+        // (заголовок 0x2000 байт: u32[0]=размер, u32[2]=физический адрес).
+        java.io.File cla = new java.io.File(dir + "/C3520XFLJ1_BIN/C3520XELaFleur.cla");
+        java.io.File[] parts = cla.listFiles();
+        if (parts != null) {
+            for (java.io.File f : parts) {
+                byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+                if (b.length < 0x2000) continue;
+                int size = java.nio.ByteBuffer.wrap(b, 0, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
+                int phys = java.nio.ByteBuffer.wrap(b, 8, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
+                java.io.File dec = new java.io.File("/tmp/opencode/dec/" + f.getName() + ".bin");
+                if (dec.exists()) {
+                    byte[] d = java.nio.file.Files.readAllBytes(dec.toPath());
+                    mem.load(d, 0, d.length, phys);
+                    System.out.printf("loaded DECOMPRESSED %-20s %08x .. %08x (%x bytes)%n",
+                            f.getName(), phys, phys + d.length, d.length);
+                } else {
+                    mem.load(b, 0x2000, size, phys);
+                    System.out.printf("loaded %-20s %08x .. %08x%n", f.getName(), phys, phys + size);
+                }
+            }
+        }
+
+        // Экспериментальная загрузка: --load <file> <fileOffset> <length> <virtualAddr>
+        // Применяется после цикла обнуления RAM (PC=0x660), иначе загрузчик его затрёт.
+        java.util.List<Runnable> deferred = new java.util.ArrayList<>();
+        for (int i = 3; i + 4 < args.length; i++) {
+            if (!"--load".equals(args[i])) continue;
+            final String f0 = args[i + 1];
+            final int off0 = (int) Long.decode(args[i + 2]).longValue();
+            final int len0 = (int) Long.decode(args[i + 3]).longValue();
+            final int va0 = (int) Long.decode(args[i + 4]).longValue();
+            deferred.add(() -> {
+                try {
+                    byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(f0));
+                    if (off0 >= 0 && off0 < blob.length) {
+                        int len = Math.min(len0, blob.length - off0);
+                        mem.load(blob, off0, len, va0);
+                        System.out.printf("extra load (deferred): %s +%x -> %08x (%x bytes)%n", f0, off0, va0, len);
+                    }
+                } catch (Exception e) { System.out.println("load failed: " + e); }
+            });
+        }
+
+        // Регистр ожидания готовности NAND/DMA: бит 19 означает "готово".
+        mem.setMMIO(0x70002188, 0x00080000);
+        // Битовая маска доступных разделов/устройств в контроллере (0x7001b000).
+        mem.setMMIO(0x7001b038, 0xFFFFFFFF);
+        mem.setMMIO(0x7001b03c, 0xFFFFFFFF);
+        // Таблица сервисных указателей в RAM (BLX r0 в 0x2FFE6F3C):
+        // индекс берётся из [0x7000102c] (по умолчанию 0).
+        deferred.add(() -> {
+            for (int a = 0x3001d000; a < 0x3001d400; a += 8) mem.write32(a, 0x2ffe0ae4);
+            mem.write8(0x3001d270, 0xFF);   // "последний обслуженный IRQ" — не совпадает с новым
+        });
+
+        boolean fromSnap = false;
+        for (String a : args) if ("--from-snap".equals(a)) fromSnap = true;
+        boolean snapped = false;
+        ARM cpu = new ARM(mem);
+        cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
+        if (fromSnap) {
+            try {
+                String[] lines = java.nio.file.Files.readAllLines(java.nio.file.Paths.get("/tmp/opencode/snap_regs.txt")).toArray(new String[0]);
+                for (int k = 0; k < 16; k++) cpu.r[k] = (int) Long.parseUnsignedLong(lines[k].trim(), 16);
+                cpu.cpsr = (int) Long.parseUnsignedLong(lines[16].trim(), 16);
+                int[][] ranges = {{0x0,0x10000},{0xc0000000,0xc0010000},{0xc3bc0000,0xc3be0000},
+                                  {0xc99a0000,0xc99e0000},{0x30000000,0x30020000},{0x70000000,0x70020000}};
+                for (int[] rg : ranges) {
+                    byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                        String.format("/tmp/opencode/snap_%08x.bin", rg[0])));
+                    mem.load(blob, 0, blob.length, rg[0]);
+                }
+                snapped = true;
+            } catch (Exception e) { System.out.println("[SNAP] load failed " + e); }
+        }
+        if (startRoot && !fromSnap) {
+            cpu.r[15] = 0xc0000000;   // нормальная загрузка: сброс из ROOT, не USB-агент
+            cpu.r[13] = 0x40001000;
+            cpu.cpsr = 0xd3;
+        }
+        for (String a : args) if ("--trace-all".equals(a)) cpu.traceAll = true;
+        if (!deferred.isEmpty()) cpu.afterZeroFill = () -> deferred.forEach(Runnable::run);
+
+        // Вариант А: вызвать функцию прошивки с заданными аргументами.
+        for (int i = 3; i + 5 < args.length; i++) {
+            if (!"--call".equals(args[i])) continue;
+            int target = (int) Long.decode(args[i + 1]).longValue();
+            int a0 = (int) Long.decode(args[i + 2]).longValue();
+            int a1 = (int) Long.decode(args[i + 3]).longValue();
+            int a2 = (int) Long.decode(args[i + 4]).longValue();
+            int n = Integer.parseInt(args[i + 5]);
+            cpu.r[0] = a0; cpu.r[1] = a1; cpu.r[2] = a2;
+            cpu.r[14] = 0xDEAD0000;
+            cpu.cpsr = 0x10;
+            cpu.r[15] = target & ~1;
+            if ((target & 1) != 0) cpu.cpsr |= 0x20;
+            for (int k = 0; k < n && !cpu.halted; k++) cpu.step(false);
+            System.out.printf("call %08x(%08x,%08x,%08x) -> pc=%08x halted=%b %s%n",
+                    target, a0, a1, a2, cpu.r[15], cpu.halted, cpu.haltReason);
+            System.out.print("dest: ");
+            for (int k = 0; k < 32; k++) System.out.printf("%02x", mem.read8(a1 + k));
+            System.out.println();
+            return;
+        }
+        System.out.println("ARM9 emulator — C3520 bootloader");
+        System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
+        java.io.PrintWriter regTrace = null;
+        for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
+        for (int i = 0; i < steps && !cpu.halted; i++) {
+            if (startRoot && !snapped && cpu.r[15] == 0xc00004a0) {
+                snapped = true;
+                StringBuilder sb = new StringBuilder();
+                for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.r[k]));
+                sb.append(String.format("%08x%n", cpu.cpsr));
+                try {
+                    java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/opencode/snap_regs.txt"), sb.toString().getBytes());
+                    int[][] ranges = {{0x0,0x10000},{0xc0000000,0xc0010000},{0xc3bc0000,0xc3be0000},
+                                      {0xc99a0000,0xc99e0000},{0x30000000,0x30020000},{0x70000000,0x70020000}};
+                    for (int[] rg : ranges) {
+                        byte[] blob = new byte[rg[1]-rg[0]];
+                        for (int a = rg[0]; a < rg[1]; a++) blob[a-rg[0]] = (byte) mem.read8(a);
+                        java.nio.file.Files.write(java.nio.file.Paths.get(
+                            String.format("/tmp/opencode/snap_%08x.bin", rg[0])), blob);
+                    }
+                    System.out.println("[SNAP] saved at pc=0xc00004a0 cpsr=" + Integer.toHexString(cpu.cpsr));
+                } catch (Exception e) { System.out.println("[SNAP] failed " + e); }
+            }
+            if (regTrace != null && !(((cpu.cpsr & 0x20) != 0) &&
+                    (((mem.read16(cpu.r[15]) & 0xF800) == 0xF800) ||
+                     ((mem.read16(cpu.r[15]) & 0xF800) == 0xE800)))) {
+                StringBuilder sb = new StringBuilder();
+                for (int k = 0; k < 16; k++) sb.append(String.format(" %08x", cpu.r[k]));
+                regTrace.printf("%08x %08x%s %08x%n", cpu.r[15], mem.read32(cpu.r[15] & ~1), sb, cpu.cpsr);
+            }
+            // Системный тик: раз в 50000 инструкций INTC выставляет pending IRQ.
+            if (!startRoot && !fromSnap && i > 1000 && (i % 50000) == 0) {
+                int irq = 1 + ((i / 50000) % 30);
+                mem.setMMIO(0x7000102c, irq);
+                if ((cpu.cpsr & 0x1F) != 0x12) cpu.injectIRQ();
+            }
+            if (tracer != null) tracer.notePC(cpu.r[15]);
+            cpu.step(trace);
+        }
+        if (regTrace != null) regTrace.close();
+        System.out.println();
+        System.out.printf("vectors: 00=%08x 18=%08x 20=%08x 24=%08x 28=%08x%n",
+                mem.read32(0), mem.read32(0x18), mem.read32(0x20), mem.read32(0x24), mem.read32(0x28));
+        System.out.printf("mem[2ffe23dc]=%08x mem[2ffe0794]=%08x mem[40000000]=%08x%n",
+                mem.read32(0x2ffe23dc), mem.read32(0x2ffe0794), mem.read32(0x40000000));
+        System.out.println(cpu.dumpRegs());
+        if (startRoot) {
+            System.out.print("[L1] ");
+            for (int idx : new int[]{0x000,0x2ff,0x300,0xa00,0xc00,0xfff})
+                System.out.printf("%03x=%08x ", idx, mem.read32(0xc3bc4000 + idx*4));
+            System.out.println();
+        }
+        System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
+    }
+}

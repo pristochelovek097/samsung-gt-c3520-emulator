@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XBOX SERIES X|S — Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ ЗАГРУЗКА ============ -->
+<div id="boot" class="boot">
+  <div class="boot-glow"></div>
+  <div class="boot-sphere">
+    <div class="boot-ring r1"></div>
+    <div class="boot-ring r2"></div>
+    <div class="boot-ring r3"></div>
+    <svg class="boot-x" viewBox="0 0 100 100"><path d="M18 16 C40 44 60 68 82 88 M82 16 C60 44 40 68 18 88" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round"/></svg>
+  </div>
+  <div class="boot-word">XBOX</div>
+  <div class="boot-sub">SERIES X|S &nbsp;•&nbsp; ДЕМО-ЭМУЛЯТОР</div>
+  <div class="boot-bar"><i></i></div>
+  <div class="boot-hint">Нажми любую кнопку, чтобы пропустить</div>
+</div>
+
+<!-- ============ ДАШБОРД ============ -->
+<div id="dashboard" class="dashboard hidden">
+
+  <div class="ambient ambient-1"></div>
+  <div class="ambient ambient-2"></div>
+
+  <header class="topbar">
+    <div class="user">
+      <div class="gamerpic">Б</div>
+      <div class="user-info">
+        <b>БОГДАН</b>
+        <span>Геймерска тег #4821</span>
+      </div>
+      <span class="chevron">⌄</span>
+    </div>
+    <div class="topbar-right">
+      <div class="status"><span class="dot online"></span> В сети</div>
+      <div class="status" id="clock">--:--</div>
+      <div class="status icons">◕ ▰ ▰</div>
+      <button class="power" id="powerBtn" title="Питание">⏻</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="home">Главная</button>
+    <button class="tab" data-tab="games">Мои игры и приложения</button>
+    <button class="tab" data-tab="pass">Game Pass</button>
+    <button class="tab" data-tab="store">Магазин</button>
+    <button class="tab" data-tab="profile">Профиль</button>
+  </nav>
+
+  <!-- ГЛАВНАЯ -->
+  <main class="page active" id="page-home">
+    <section class="hero">
+      <div class="hero-art art-neon">
+        <div class="art-grid"></div>
+        <div class="art-sun"></div>
+        <div class="art-title">NEON<br><span>RUNNER</span></div>
+      </div>
+      <div class="hero-info">
+        <div class="hero-badge">★ ВЫБОР РЕДАКЦИИ</div>
+        <h1>NEON RUNNER</h1>
+        <p>Беги по неоновым крышам, уворачивайся от дронов и собирай очки. Один промах — и город проглотит тебя.</p>
+        <div class="hero-meta"><span>arcade</span><span>⚡ 120 FPS</span><span>🎮 Геймпад</span></div>
+        <button class="btn primary" data-launch="runner">▶ Запустить игру</button>
+        <button class="btn ghost" data-focus="games">Подробнее</button>
+      </div>
+    </section>
+
+    <section class="shelf">
+      <div class="shelf-head"><h2>Продолжить играть</h2><span>→</span></div>
+      <div class="cards" id="recentCards"></div>
+    </section>
+
+    <section class="shelf">
+      <div class="shelf-head"><h2>Рекомендуем</h2><span>→</span></div>
+      <div class="cards" id="recommendCards"></div>
+    </section>
+
+    <aside class="friends">
+      <div class="friends-head"><h3>ДРУЗЬЯ</h3><span>12 в сети</span></div>
+      <div id="friendsList"></div>
+      <div class="party">
+        <div class="party-title">🎧 ВЕЧЕРИНКА</div>
+        <div class="party-row"><span class="avatar a1">А</span><span>aledka</span><span class="mic">🎤</span></div>
+        <div class="party-row"><span class="avatar a2">М</span><span>misha_x</span><span class="mic">🎤</span></div>
+        <div class="party-row"><span class="avatar a3">К</span><span>katya</span><span class="mic muted">🔇</span></div>
+        <button class="btn tiny">Присоединиться</button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- МОИ ИГРЫ -->
+  <main class="page" id="page-games">
+    <div class="page-head"><h1>Мои игры и приложения</h1><div class="filters"><button class="f active">Все</button><button class="f">Игры</button><button class="f">Приложения</button><button class="f">Недавние</button></div></div>
+    <div class="library" id="libraryGrid"></div>
+    <div class="empty-hint">Выдели игру и жми <kbd>A</kbd> или <kbd>Enter</kbd>, чтобы запустить</div>
+  </main>
+
+  <!-- GAME PASS -->
+  <main class="page" id="page-pass">
+    <div class="page-head"><h1>Xbox Game Pass <span class="green">Ultimate</span></h1></div>
+    <div class="pass-banner"><div><h2>Играй в 5 мини-игр прямо сейчас</h2><p>Без установки, без дисков, без лишних万字. Нажми на карточку — и в бой.</p><button class="btn primary" data-focus="games">Смотреть каталог</button></div><div class="pass-logo">PASS</div></div>
+    <div class="shelf"><div class="shelf-head"><h2>Доступно сегодня</h2></div><div class="cards" id="passCards"></div></div>
+  </main>
+
+  <!-- МАГАЗИН -->
+  <main class="page" id="page-store">
+    <div class="page-head"><h1>Магазин</h1></div>
+    <div class="store-deal"><div class="deal-art art-tetris"><span>Т camps</span></div><div><div class="deal-badge">−70%</div><h2>TETRIS X</h2><p>Классика, которая никогда не надоест. Сейчас бесплатно в демо-эмуляторе.</p><button class="btn primary" data-launch="tetris">▶ Играть бесплатно</button></div></div>
+    <div class="store-note">💳 Покупки отключены: палец ушибэ, кошелёк тоже.</div>
+  </main>
+
+  <!-- ПРОФИЛЬ -->
+  <main class="page" id="page-profile">
+    <div class="profile-hero"><div class="gamerpic big">Б</div><div><h1>БОГДАН</h1><p>Геймерска тег #4821 · С нами с 2026</p><div class="gamer-score"><div><b>12 480</b><span>GamerScore</span></div><div><b>47</b><span>Достижений</span></div><div><b>5</b><span>Игр</span></div></div></div></div>
+    <div class="shelf"><div class="shelf-head"><h2>Недавние достижения</h2></div><div class="achievements"><div class="ach"><span class="ach-icon">🏆</span><div><b>Первый блин</b><small>NEON RUNNER · +10G</small></div></div><div class="ach"><span class="ach-icon">🐍</span><div><b>Змейка-убийца</b><small>SNAKE 360 · +20G</small></div></div><div class="ach"><span class="ach-icon">🧱</span><div><b>Кирпичный demolition</b><small>BREAKOUT X · +15G</small></div></div></div></div>
+  </main>
+</div>
+
+<!-- ============ ГИД (GUIDE) ============ -->
+<div id="guide" class="guide hidden">
+  <div class="guide-card">
+    <div class="guide-head"><span class="gamerpic sm">Б</span><div><b>БОГДАН</b><small>В сети</small></div><span class="guide-close" id="guideClose">✕</span></div>
+    <div class="guide-section"><h4>БЫСТРЫЕ ДЕЙСТВИЯ</h4><button>🎮 Настройки геймпада</button><button>🔊 Звук и изображение</button><button>👥 Пригласить друзей</button><button>⚙️ Настройки эмулятора</button></div>
+    <div class="guide-section"><h4>КВИК-РЕЗЮМЕ</h4><div id="guideResume">Нет приостановленных игр</div></div>
+    <div class="guide-foot">ДВИЖОК · <kbd>←</kbd><kbd>→</kbd> навигация · <kbd>A</kbd> выбор · <kbd>B</kbd> назад</div>
+  </div>
+</div>
+
+<!-- ============ ИГРОВОЙ ОВЕРЛЕЙ ============ -->
+<div id="gameShell" class="game-shell hidden">
+  <div class="game-top">
+    <button class="game-back" id="gameBack">✕ Закрыть игру</button>
+    <div class="game-title" id="gameTitle">GAME</div>
+    <div class="game-score">СЧЁТ <b id="hudScore">0</b> <span id="hudBest">| РЕКОРД 0</span></div>
+  </div>
+  <div class="game-stage">
+    <canvas id="gameCanvas" width="960" height="540"></canvas>
+    <div class="game-over hidden" id="gameOver"><h2>GAME OVER</h2><p id="gameOverText">Попробуй ещё раз</p><button class="btn primary" id="restartBtn">↻ Перезапустить</button><button class="btn ghost" id="quitBtn">В дашборд</button></div>
+    <div class="game-pause hidden" id="gamePause">ПАУЗА · нажми <kbd>Esc</kbd> чтобы продолжить</div>
+  </div>
+  <div class="game-bottom"><span id="gameControls">Управление: стрелки / WASD</span><span class="fps" id="hudFps">60 FPS</span></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="games.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
