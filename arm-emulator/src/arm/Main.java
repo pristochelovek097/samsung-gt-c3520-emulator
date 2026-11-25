@@ -12,6 +12,8 @@ public final class Main {
         String boot = dir + "/C3520XFLJ1_BIN/C3520XELaFleur.bootloader";
         boolean traceIO = false;
         for (String a : args) if ("--trace-mmio".equals(a)) traceIO = true;
+        boolean saveSnap = false;
+        for (String a : args) if ("--save-snap".equals(a)) saveSnap = true;
         boolean gui = false;
         for (String a : args) if ("--gui".equals(a)) gui = true;
         boolean startRoot = false;
@@ -86,7 +88,6 @@ public final class Main {
         boolean fromSnap = false;
         for (String a : args) if ("--from-snap".equals(a)) fromSnap = true;
         boolean snapped = false;
-        int dbg8 = 0;
         final LcdController lcd = new LcdController();
         final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
         if (window != null) lcd.testPattern();
@@ -94,14 +95,14 @@ public final class Main {
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
         if (fromSnap) {
             try {
-                String[] lines = java.nio.file.Files.readAllLines(java.nio.file.Paths.get("/tmp/opencode/snap_regs.txt")).toArray(new String[0]);
+                String[] lines = java.nio.file.Files.readAllLines(java.nio.file.Paths.get("/tmp/opencode/ref_entry_4a0.bin")).toArray(new String[0]);
                 for (int k = 0; k < 16; k++) cpu.r[k] = (int) Long.parseUnsignedLong(lines[k].trim(), 16);
                 cpu.cpsr = (int) Long.parseUnsignedLong(lines[16].trim(), 16);
                 int[][] ranges = {{0x0,0x10000},{0xc0000000,0xc0010000},{0xc3bc0000,0xc3be0000},
                                   {0xc99a0000,0xc99e0000},{0x30000000,0x30020000},{0x70000000,0x70020000}};
                 for (int[] rg : ranges) {
                     byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
-                        String.format("/tmp/opencode/%s_%08x.bin", fromSnap ? "snapfrom" : "snapfull", rg[0])));
+                        String.format("/tmp/opencode/ref_entry_%08x.bin", rg[0])));
                     mem.load(blob, 0, blob.length, rg[0]);
                 }
                 snapped = true;
@@ -141,25 +142,23 @@ public final class Main {
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
         for (int i = 0; i < steps && !cpu.halted; i++) {
-            if (cpu.r[15] == 0xc00004a0 && dbg8++ < 2) {
-                StringBuilder sb = new StringBuilder("[ENTRY]");
-                for (int k = 0; k < 16; k++) sb.append(String.format(" %08x", cpu.r[k]));
-                System.out.println(sb.append(String.format(" cpsr=%08x", cpu.cpsr)));
-            }
-            if ((startRoot || fromSnap) && !snapped && cpu.r[15] == 0xc00004a0) {
+            if (saveSnap && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
                 StringBuilder sb = new StringBuilder();
                 for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.r[k]));
                 sb.append(String.format("%08x%n", cpu.cpsr));
                 try {
-                    java.nio.file.Files.write(java.nio.file.Paths.get("/tmp/opencode/snap_regs.txt"), sb.toString().getBytes());
+                    java.nio.file.Path ref = java.nio.file.Paths.get("/tmp/opencode/ref_entry_4a0.bin");
+                    if (!java.nio.file.Files.exists(ref))
+                        java.nio.file.Files.write(ref, sb.toString().getBytes());
                     int[][] ranges = {{0x0,0x10000},{0xc0000000,0xc0010000},{0xc3bc0000,0xc3be0000},
                                       {0xc99a0000,0xc99e0000},{0x30000000,0x30020000},{0x70000000,0x70020000}};
                     for (int[] rg : ranges) {
                         byte[] blob = new byte[rg[1]-rg[0]];
                         for (int a = rg[0]; a < rg[1]; a++) blob[a-rg[0]] = (byte) mem.read8(a);
-                        java.nio.file.Files.write(java.nio.file.Paths.get(
-                            String.format("/tmp/opencode/%s_%08x.bin", fromSnap ? "snapfrom" : "snapfull", rg[0])), blob);
+                        java.nio.file.Path bp = java.nio.file.Paths.get(
+                            String.format("/tmp/opencode/ref_entry_%08x.bin", rg[0]));
+                        if (!java.nio.file.Files.exists(bp)) java.nio.file.Files.write(bp, blob);
                     }
                     System.out.println("[SNAP] saved at pc=0xc00004a0 cpsr=" + Integer.toHexString(cpu.cpsr));
                 } catch (Exception e) { System.out.println("[SNAP] failed " + e); }
