@@ -16,6 +16,8 @@ public final class Main {
         for (String a : args) if ("--save-snap".equals(a)) saveSnap = true;
         boolean gui = false;
         for (String a : args) if ("--gui".equals(a)) gui = true;
+        boolean noFast = false;
+        for (String a : args) if ("--no-fast".equals(a)) noFast = true;
         boolean startRoot = false;
         for (String a : args) if ("--start-root".equals(a)) startRoot = true;
         TraceMemory tracer = traceIO ? new TraceMemory() : null;
@@ -92,6 +94,7 @@ public final class Main {
         final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
         if (window != null) lcd.testPattern();
         ARM cpu = new ARM(mem);
+        if (noFast) cpu.fastPaths = false;
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
         if (fromSnap) {
             try {

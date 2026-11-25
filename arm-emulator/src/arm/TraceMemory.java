@@ -35,8 +35,6 @@ public final class TraceMemory extends Memory {
     @Override
     public void write8(int addr, int value) {
         uart(addr, value);
-        if (addr >= 0xc3bc2840 && addr <= 0xc3bc2850)
-            System.out.printf("[WB] pc=%08x addr=%08x val=%02x%n", currentPC, addr, value & 0xff);
         if ((addr & 0xF0000000) == 0x70000000) io(addr, "wr8", value & 0xFF);
         super.write8(addr, value);
     }
@@ -64,8 +62,6 @@ public final class TraceMemory extends Memory {
     @Override
     public void write32(int addr, int value) {
         uart(addr, value);
-        if (addr >= 0xc3bc2840 && addr <= 0xc3bc2850)
-            System.out.printf("[WT] pc=%08x addr=%08x val=%08x%n", currentPC, addr, value);
         if ((addr & 0xF0000000) == 0x70000000) io(addr, "wr32", value);
         // EOI: подтверждение прерывания снимает pending-бит в INTC
         if (addr == 0x70001038) setMMIO(0x7000102c, 0);

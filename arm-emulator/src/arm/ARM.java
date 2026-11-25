@@ -18,6 +18,7 @@ public final class ARM {
     private int spsr;
     public Runnable afterZeroFill;
     public boolean traceAll;
+    public boolean fastPaths = true;
     private long zeroRun;
 
     public void injectIRQ() { if (!halted) raiseIRQ(r[15]); }
@@ -279,7 +280,7 @@ public final class ARM {
         if (!isBlxImm && !cond(insn >>> 28)) return;
 
         // Ускоритель циклов memset/memcpy загрузчика (иначе сотни млн итераций).
-        if (addr == 0x658 && (insn & 0x0F000000) == 0x03000000) { // strlo r2,[r0],#4
+        if (fastPaths && addr == 0x658 && (insn & 0x0F000000) == 0x03000000) { // strlo r2,[r0],#4
             mem.memset(r[0], r[1], r[2]);
             r[0] = r[1];
             cpsr &= ~(1 << 29);          // C=0 → LO больше не выполняется
@@ -287,14 +288,14 @@ public final class ARM {
             return;
         }
         // ROOT 0xC0001158: STMGE r0!,{r4..fp} — обнуление по 32 байта за итерацию
-        if (addr == 0xc0001158 && r[1] >= 32) {
+        if (fastPaths && addr == 0xc0001158 && r[1] >= 32) {
             int n = r[1] >>> 5;
             mem.memset(r[0], r[0] + n * 32, 0);
             r[0] += n * 32; r[1] -= n * 32; r[15] = 0xc0001168;
             return;
         }
         // ROOT: ускорение циклов копирования/обнуления секций (иначе десятки млн итераций)
-        if (addr == 0xc00012e4 && (insn & 0x0F000000) == 0x05000000) { // str r3,[r1],#4 (zero)
+        if (fastPaths && addr == 0xc00012e4 && (insn & 0x0F000000) == 0x05000000) { // str r3,[r1],#4 (zero)
             int n = r[0] - r[2];
             if (n > 16) {
                 mem.memset(r[1], r[1] + 4 * n, r[3]);
@@ -302,7 +303,7 @@ public final class ARM {
                 return;
             }
         }
-        if (addr == 0xc00012ac && (insn & 0x0F000000) == 0x04000000) { // ldr ip,[r1],#4
+        if (fastPaths && addr == 0xc00012ac && (insn & 0x0F000000) == 0x04000000) { // ldr ip,[r1],#4
             int n = r[0] - r[2];
             if (n > 16) {
                 mem.memcpy(r[3], r[1], 4 * n);
@@ -310,7 +311,7 @@ public final class ARM {
                 return;
             }
         }
-        if (addr == 0x674 && (insn & 0x0F000000) == 0x04000000) { // ldrlo r2,[r4],#4
+        if (fastPaths && addr == 0x674 && (insn & 0x0F000000) == 0x04000000) { // ldrlo r2,[r4],#4
             int len = r[1] - r[0];
             mem.memcpy(r[0], r[4], len);
             r[0] = r[1];
