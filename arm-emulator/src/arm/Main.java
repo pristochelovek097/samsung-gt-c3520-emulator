@@ -2,6 +2,8 @@ package arm;
 
 /** CLI: run the Samsung C3520 bootloader in the ARM9 interpreter. */
 public final class Main {
+    private static boolean addrIsLcd(int a) { return (a & 0xFFFF0000) == 0x74020000; }
+
     public static void main(String[] args) throws Exception {
         String dir = args.length > 0 ? args[0] : "/home/bogdan/Downloads/C3520XELJ1";
         int steps = args.length > 1 ? Integer.parseInt(args[1]) : 500;
@@ -10,6 +12,8 @@ public final class Main {
         String boot = dir + "/C3520XFLJ1_BIN/C3520XELaFleur.bootloader";
         boolean traceIO = false;
         for (String a : args) if ("--trace-mmio".equals(a)) traceIO = true;
+        boolean gui = false;
+        for (String a : args) if ("--gui".equals(a)) gui = true;
         boolean startRoot = false;
         for (String a : args) if ("--start-root".equals(a)) startRoot = true;
         TraceMemory tracer = traceIO ? new TraceMemory() : null;
@@ -83,6 +87,9 @@ public final class Main {
         for (String a : args) if ("--from-snap".equals(a)) fromSnap = true;
         boolean snapped = false;
         int dbg8 = 0;
+        final LcdController lcd = new LcdController();
+        final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
+        if (window != null) lcd.testPattern();
         ARM cpu = new ARM(mem);
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
         if (fromSnap) {
@@ -171,7 +178,9 @@ public final class Main {
                 if ((cpu.cpsr & 0x1F) != 0x12) cpu.injectIRQ();
             }
             if (tracer != null) tracer.notePC(cpu.r[15]);
+            if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
             cpu.step(trace);
+            if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
         if (regTrace != null) regTrace.close();
         System.out.println();
