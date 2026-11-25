@@ -15,7 +15,7 @@ public final class Main {
         TraceMemory tracer = traceIO ? new TraceMemory() : null;
         Memory mem = tracer != null ? tracer : new Memory();
         // При холодном старте из ROOT физический адрес 0 не содержит USB-агента.
-        if (!startRoot) mem.load(boot, 0);
+        mem.load(boot, 0);
         // При холодном старте из ROOT быстрая SRAM 0x2FFE0000 не содержит USB-агента.
         if (!startRoot) mem.load(boot, 0x2ffe0000);
         else {
@@ -82,6 +82,7 @@ public final class Main {
         boolean fromSnap = false;
         for (String a : args) if ("--from-snap".equals(a)) fromSnap = true;
         boolean snapped = false;
+        int dbg8 = 0;
         ARM cpu = new ARM(mem);
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
         if (fromSnap) {
@@ -93,7 +94,7 @@ public final class Main {
                                   {0xc99a0000,0xc99e0000},{0x30000000,0x30020000},{0x70000000,0x70020000}};
                 for (int[] rg : ranges) {
                     byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
-                        String.format("/tmp/opencode/snap_%08x.bin", rg[0])));
+                        String.format("/tmp/opencode/%s_%08x.bin", fromSnap ? "snapfrom" : "snapfull", rg[0])));
                     mem.load(blob, 0, blob.length, rg[0]);
                 }
                 snapped = true;
@@ -133,7 +134,12 @@ public final class Main {
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
         for (int i = 0; i < steps && !cpu.halted; i++) {
-            if (startRoot && !snapped && cpu.r[15] == 0xc00004a0) {
+            if (cpu.r[15] == 0xc00004a0 && dbg8++ < 2) {
+                StringBuilder sb = new StringBuilder("[ENTRY]");
+                for (int k = 0; k < 16; k++) sb.append(String.format(" %08x", cpu.r[k]));
+                System.out.println(sb.append(String.format(" cpsr=%08x", cpu.cpsr)));
+            }
+            if ((startRoot || fromSnap) && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
                 StringBuilder sb = new StringBuilder();
                 for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.r[k]));
@@ -146,7 +152,7 @@ public final class Main {
                         byte[] blob = new byte[rg[1]-rg[0]];
                         for (int a = rg[0]; a < rg[1]; a++) blob[a-rg[0]] = (byte) mem.read8(a);
                         java.nio.file.Files.write(java.nio.file.Paths.get(
-                            String.format("/tmp/opencode/snap_%08x.bin", rg[0])), blob);
+                            String.format("/tmp/opencode/%s_%08x.bin", fromSnap ? "snapfrom" : "snapfull", rg[0])), blob);
                     }
                     System.out.println("[SNAP] saved at pc=0xc00004a0 cpsr=" + Integer.toHexString(cpu.cpsr));
                 } catch (Exception e) { System.out.println("[SNAP] failed " + e); }
