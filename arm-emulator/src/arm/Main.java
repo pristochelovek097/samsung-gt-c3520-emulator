@@ -1,5 +1,9 @@
 package arm;
 
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
+import java.io.File;
+
 /** CLI: run the Samsung C3520 bootloader in the ARM9 interpreter. */
 public final class Main {
     private static boolean addrIsLcd(int a) {
@@ -102,6 +106,7 @@ public final class Main {
         boolean mainSaved = false;
         int dbgFirst = 0;
         final LcdController lcd = new LcdController();
+        mem.setLcdController(lcd);
         final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
         if (window != null) lcd.testPattern();
         if (startRoot || fromSnap) mem.lockFlash();
@@ -174,6 +179,47 @@ public final class Main {
             for (int k = 0; k < 32; k++) System.out.printf("%02x", mem.read8(a1 + k));
             System.out.println();
             return;
+        }
+        // Фаза 1: заводской LCDACT + IMAGE — ранний бутскрин Samsung.
+        // В реальном телефоне этот раздел исполняется до ROOT/MAIN и сам
+        // инициализирует экран через 0x740xxxxx, затем выводит логотип.
+        if (startRoot) {
+            try {
+                byte[] act = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                        dir + "/C3520XFLJ1_BIN/C3520XELaFleur.bootlcdact"));
+                int n = act.length - 0x2000;
+                // Отдельная память: LCDACT перестраивает MMU/вектора и не должна
+                // портить состояние, с которого стартует ROOT → MAIN.
+                Memory bm = new Memory();
+                bm.setLcdController(lcd);
+                bm.load(act, 0x2000, n, 0xC0000000);    // exec @ .ptt load address
+                bm.load(act, 0x2000, n, 0x0);            // зеркало ITCM/векторов
+                ARM lc = new ARM(bm);
+                lc.fastPaths = false;
+                lc.r[15] = 0xC0000000;
+                lc.r[13] = 0xC1AB0000;
+                lc.cpsr = 0xD3;                          // ARM, SVC, I/F masked
+                for (int k = 0; k < 200000 && !lc.halted; k++) lc.step(false);
+                System.out.printf("[LCDACT] executed %d instr, halted=%s%n",
+                        lc.instructions, lc.haltReason);
+
+                // IMAGE (.bmp, QMDC) уже распакован в RGB565 — шлём его через
+                // тот же MMIO-порт данных, что и заводской код (0x74002100).
+                byte[] rgb = java.nio.file.Files.readAllBytes(
+                        java.nio.file.Paths.get("/tmp/opencode/image_rgb565.bin"));
+                bm.write32(0x74002000, 0x2C);            // RAMWR
+                for (int k = 0; k + 1 < rgb.length; k += 2) {
+                    int v = (rgb[k] & 0xFF) | ((rgb[k + 1] & 0xFF) << 8);
+                    bm.write32(0x74002100, v);
+                }
+                System.out.printf("[BOOTSCREEN] commands=%d pixels=%d%n",
+                        lcd.commands(), lcd.pixels());
+                BufferedImage img = lcd.image();
+                ImageIO.write(img, "PNG", new File("/tmp/opencode/bootscreen.png"));
+                if (window != null) window.update(lc, 0);
+            } catch (Exception e) {
+                System.out.println("[BOOTSCREEN] failed: " + e);
+            }
         }
         System.out.println("ARM9 emulator — C3520 bootloader");
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));

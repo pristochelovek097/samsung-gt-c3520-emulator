@@ -36,7 +36,7 @@ public final class LcdController {
 
     /** Запись в регистр/порт EBI LCD. */
     public void write(int addr, int value) {
-        int a = addr & 0xFFFFF;
+        int a = addr;
         if (a == EBI_CMD) {                      // команда ILI93xx/S6Dxxxx
             command = value & 0xFFFF;
             commands++;

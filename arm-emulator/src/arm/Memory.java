@@ -12,8 +12,18 @@ public class Memory {
     private final Map<Integer, byte[]> pages = new HashMap<>();
     private final Map<Integer, Integer> mmio = new HashMap<>();
     private NandController nand;
+    private LcdController lcd;
 
     public void setNandController(NandController c) { this.nand = c; }
+    public void setLcdController(LcdController c) { this.lcd = c; }
+
+    /** Порты дисплея из LCDACT:记录和 команды уходят прямо в контроллер экрана. */
+    private boolean lcdPort(int addr) {
+        int p = addr & 0x000FFFFF;
+        return addr == 0x74002000 || addr == 0x74002100
+            || (addr & ~1) == 0x7401900C
+            || (addr & 0xFFFF0000) == 0x74020000;
+    }
 
     // Плоские физические области PNX4910: 32 МБ NOR/flash, 32 МБ SDRAM, 1 МБ SRAM.
     private static final int FLASH_BASE = 0xC0000000, FLASH_SIZE = 0x02000000;
@@ -83,6 +93,7 @@ public class Memory {
     }
 
     public void write32(int addr, int value) {
+        if (lcd != null && lcdPort(addr)) { lcd.write(addr, value); return; }
         // 0x70002018 — самосбрасывающийся бит «go» NAND/DMA: железо гасит
         // его по завершении операции, драйвер крутится до нуля.
         if ((addr & ~3) == 0x70002018) return;
@@ -119,6 +130,7 @@ public class Memory {
     }
 
     public void write16(int addr, int value) {
+        if (lcd != null && lcdPort(addr)) { lcd.write(addr, value & 0xFFFF); return; }
         int a = addr & ~1;
         byte[] f = flat(a);
         if (f != null) {
@@ -139,6 +151,7 @@ public class Memory {
     }
 
     public void write8(int addr, int value) {
+        if (lcd != null && lcdPort(addr)) { lcd.write(addr, value & 0xFF); return; }
         if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) { nand.write(addr, value); return; }
         byte[] f = flat(addr);
         if (f != null) { f[flatOff(addr)] = (byte) value; return; }
