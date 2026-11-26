@@ -22,8 +22,13 @@ public class Memory {
     private final byte[] flash = new byte[FLASH_SIZE];
     private final byte[] sdram = new byte[SDRAM_SIZE];
     private final byte[] sram  = new byte[SRAM_SIZE];
+    // ARM926EJ-S: ITCM/DTCM — отдельная внутренняя SRAM по младшим адресам,
+    // обращения к ней идут мимо таблицы MMU, когда включён CP15 c9.
+    public static final int TCM_SIZE = 0x00040000;
+    private final byte[] itcm = new byte[TCM_SIZE];
 
     private byte[] flat(int addr) {
+        if (addr >= 0 && addr < TCM_SIZE) return itcm;
         int a = addr & 0xFFFFFFFF;
         if ((a & 0xFE000000) == FLASH_BASE) return flash;
         if ((a & 0xFE000000) == SDRAM_BASE) return sdram;
@@ -31,7 +36,10 @@ public class Memory {
         return null;
     }
 
-    private int flatOff(int addr) { return addr & 0x01FFFFFF; }
+    private int flatOff(int addr) {
+        if (addr >= 0 && addr < TCM_SIZE) return addr;
+        return addr & 0x01FFFFFF;
+    }
 
     // Весь диапазон 0xC0000000..0xC3FFFFFF — физическая SDRAM, читаемо-пишущая.
     public void lockFlash() { }
@@ -75,6 +83,9 @@ public class Memory {
     }
 
     public void write32(int addr, int value) {
+        // 0x70002018 — самосбрасывающийся бит «go» NAND/DMA: железо гасит
+        // его по завершении операции, драйвер крутится до нуля.
+        if ((addr & ~3) == 0x70002018) return;
         if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) {
             nand.write(addr, value);
             return;

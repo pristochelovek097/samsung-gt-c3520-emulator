@@ -87,6 +87,9 @@ public final class ARM {
     private int tlbVaTag = -1, tlbPaBase = 0, tlbMask = 0xFFF;
 
     private int translate(int va) {
+        // ITCM/DTCM (ARM926EJ-S): при активном CP15 c9 младшие адреса
+        // обращаются во внутреннюю SRAM напрямую, минуя MMU.
+        if ((cp15[9] & 1) != 0 && va >= 0 && va < Memory.TCM_SIZE) return va;
         if ((cp15[1] & 1) == 0) return va;         // MMU выключен
         if ((va & ~tlbMask) == tlbVaTag) return tlbPaBase | (va & tlbMask);
         int ttbr = cp15[2] & 0xFFFFC000;

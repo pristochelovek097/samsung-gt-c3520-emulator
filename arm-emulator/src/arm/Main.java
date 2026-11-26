@@ -2,7 +2,11 @@ package arm;
 
 /** CLI: run the Samsung C3520 bootloader in the ARM9 interpreter. */
 public final class Main {
-    private static boolean addrIsLcd(int a) { return (a & 0xFFFF0000) == 0x74020000; }
+    private static boolean addrIsLcd(int a) {
+        int p = a & 0xFFFFF;
+        return (a & 0xFFFF0000) == 0x74020000 || p == 0x74002000 || p == 0x74002100
+            || (p & ~1) == 0x7401900C;
+    }
 
     public static void main(String[] args) throws Exception {
         String dir = args.length > 0 ? args[0] : "/home/bogdan/Downloads/C3520XELJ1";
@@ -309,6 +313,7 @@ public final class Main {
             }
             System.out.printf(" ... live=%d/40%n", nz);
         }
+        System.out.printf("[LCD] commands=%d pixels=%d frames=%d%n", lcd.commands(), lcd.pixels(), lcd.frames());
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
 }

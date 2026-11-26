@@ -42,6 +42,9 @@ public final class NandController {
     private int column = 0;
     private int row = 0;
     private int fifoPos = 0;
+    // Статус меняется после команды включения (запись 1 в 0x10):
+    // стартовый ID=3 (проверка 0xC01E5596), затем готовность=1 (опрос в ITCM).
+    private int status14 = 3;
 
     public NandController(String dir) {
         // Пустая NAND ( стёртое состояние ) — 0xFF.
@@ -102,7 +105,7 @@ public final class NandController {
         int off = addr - BASE;
         if (off < 0 || off >= SIZE) return 0;
         switch (off) {
-            case 0x014: return 3;            // Ready / тип NAND
+            case 0x014: return status14;     // Ready / тип NAND
             case 0x0C0: return 0x16C9;       // статус верификации
             case 0x408: return 0xFFFFFFFF;   // ожидание trim
             case 0x100: return 0;            // DMA/контроль
@@ -124,7 +127,7 @@ public final class NandController {
             case 0x004: column = value & 0xFFF; fifoPos = 0; break;
             case 0x008: row = value & 0xFFFF; break;
             case 0x00C: row |= (value & 0xFF) << 16; break;
-            case 0x010: break;               // конфигурация (пишут 1)
+            case 0x010: status14 = value & 3; break;      // команда → статус ready
             case 0x030: break;               // включение
             default:
                 if (command == 0x90 || command == 0x70) {
