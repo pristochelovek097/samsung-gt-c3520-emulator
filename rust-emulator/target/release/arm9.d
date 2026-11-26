@@ -1,1 +1,0 @@
-/home/bogdan/xbox-emulator/rust-emulator/target/release/arm9: /home/bogdan/xbox-emulator/rust-emulator/src/arm.rs /home/bogdan/xbox-emulator/rust-emulator/src/lcd.rs /home/bogdan/xbox-emulator/rust-emulator/src/main.rs /home/bogdan/xbox-emulator/rust-emulator/src/memory.rs /home/bogdan/xbox-emulator/rust-emulator/src/nand.rs /home/bogdan/xbox-emulator/rust-emulator/src/qmdc.rs
