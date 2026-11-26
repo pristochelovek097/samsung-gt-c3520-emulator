@@ -228,6 +228,7 @@ public final class Main {
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
         boolean[] dbgSrv = new boolean[1];
+        boolean[] dbgBm = new boolean[1];
         boolean[] dbgShut = new boolean[1];
         long irqOpenSteps = 0;
         boolean irqOpenPrev = true;
@@ -339,6 +340,11 @@ public final class Main {
                 mem.write32(0xc1ab0010, 0xc1ab0000);
                 mem.write32(0xc1c76c30, 0xc1ab0010);
                 System.out.printf("[SERVICE10] step=%d%n", cpu.instructions);
+            }
+            if ((startRoot || fromMain) && cpu.instructions == 1000 && !dbgBm[0]) {
+                dbgBm[0] = true;
+                mem.write32(0xc1ca0178, 0x20000000);
+                System.out.printf("[BOOTMODE] step=%d val=%08x%n", cpu.instructions, mem.read32(0xc1ca0178));
             }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
