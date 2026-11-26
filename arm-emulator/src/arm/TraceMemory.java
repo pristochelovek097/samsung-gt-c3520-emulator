@@ -8,6 +8,7 @@ public final class TraceMemory extends Memory {
     private final Set<Integer> ioSeen = new HashSet<>();
     private final Set<Integer> pcPages = new HashSet<>();
     private int logCount;
+    private int dbgTabW;
     public int currentPC;
 
     private void io(int addr, String kind, int value) {
@@ -62,6 +63,8 @@ public final class TraceMemory extends Memory {
     @Override
     public void write32(int addr, int value) {
         uart(addr, value);
+        if (addr >= 0xc22cc000 && addr <= 0xc22cd000 && dbgTabW++ < 10)
+            System.out.printf("[TABW] pc=%08x addr=%08x val=%08x%n", currentPC, addr, value);
         if ((addr & 0xF0000000) == 0x70000000) io(addr, "wr32", value);
         // EOI: подтверждение прерывания снимает pending-бит в INTC
         if (addr == 0x70001038) setMMIO(0x7000102c, 0);

@@ -165,6 +165,7 @@ public final class Main {
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
+        int dbgX = 0;
         String[] ring = new String[24]; int ringN = 0; boolean enteredLow = false;
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
@@ -225,6 +226,13 @@ public final class Main {
             }
             if (startRoot && cpu.r[15] >= 0xc0020000 && cpu.r[15] < 0xc2000000 && dbgFirst++ < 12)
                 System.out.printf("[FIRST] %08x cpsr=%08x%n", cpu.r[15], cpu.cpsr);
+            if (fromMain && dbgX++ < 1) {
+                int va = 0xca2ccabc;
+                int tt = cpu.cp15[2] & 0xFFFFC000;
+                int l1 = mem.read32(tt + ((va>>>20)<<2));
+                System.out.printf("[MMU] va=%08x pa=%08x L1=%08x l2=%08x%n", va, cpu.va2pa(va), l1,
+                    mem.read32((l1 & 0xFFFFFC00) + (((va>>>12)&0xFF)<<2)));
+            }
             if (tracer != null) tracer.notePC(cpu.r[15]);
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
 
