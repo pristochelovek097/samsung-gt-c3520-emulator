@@ -10,6 +10,8 @@ public final class TraceMemory extends Memory {
     private int logCount;
     private int dbgTabW;
     public int currentPC;
+    public boolean traceWindow;
+    public long windowStep;
 
     private void io(int addr, String kind, int value) {
         int key = addr & ~3;
@@ -56,12 +58,16 @@ public final class TraceMemory extends Memory {
     @Override
     public int read32(int addr) {
         int v = super.read32(addr);
+        if (traceWindow && ((addr >>> 24) == 0x78 || (addr >>> 24) == 0x70))
+            System.out.printf("[WIN] %d pc=%08x rd32 %08x = %08x%n", windowStep, currentPC, addr, v);
         if ((addr & 0xF0000000) == 0x70000000) io(addr, "rd32", v);
         return v;
     }
 
     @Override
     public void write32(int addr, int value) {
+        if (traceWindow && ((addr >>> 24) == 0x78 || (addr >>> 24) == 0x70))
+            System.out.printf("[WIN] %d pc=%08x wr32 %08x = %08x%n", windowStep, currentPC, addr, value);
         uart(addr, value);
         if (addr >= 0xc22cc000 && addr <= 0xc22cd000 && dbgTabW++ < 10)
             System.out.printf("[TABW] pc=%08x addr=%08x val=%08x%n", currentPC, addr, value);

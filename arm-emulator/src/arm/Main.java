@@ -114,6 +114,13 @@ public final class Main {
                 for (int k = 0; k < 16; k++) cpu.r[k] = (int) Long.parseUnsignedLong(ln[k].trim(),16);
                 cpu.cpsr = (int) Long.parseUnsignedLong(ln[16].trim(),16);
                 for (int k = 0; k < 16; k++) cpu.cp15[k] = (int) Long.parseUnsignedLong(ln[17+k].trim(),16);
+                if (ln.length >= 35) {
+                    cpu.itcmReg = (int) Long.parseUnsignedLong(ln[33].trim(),16);
+                    cpu.dtcmReg = (int) Long.parseUnsignedLong(ln[34].trim(),16);
+                } else { // старый формат снимка
+                    cpu.itcmReg = cpu.cp15[9];
+                    cpu.dtcmReg = 0;
+                }
                 int[][] rg = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
                               {0xc2000000,0xc4000000},{0xc9900000,0xc9c00000},{0x30000000,0x30020000},
                               {0x70000000,0x70020000},{0x74000000,0x74020000},{0x7d800000,0x7d820000}};
@@ -173,10 +180,11 @@ public final class Main {
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
+        boolean[] dbgShut = new boolean[1];
         long irqOpenSteps = 0;
         boolean irqOpenPrev = true;
         int dbgInit = 0;
-        String[] ring = new String[64]; int ringN = 0; boolean enteredLow = false;
+        String[] ring = new String[256]; int ringN = 0; boolean enteredLow = false;
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
             if (fromMain) {
@@ -224,6 +232,8 @@ public final class Main {
                     for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.r[k]));
                     sb.append(String.format("%08x%n", cpu.cpsr));
                     for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.cp15[k]));
+                    sb.append(String.format("%08x%n", cpu.itcmReg));
+                    sb.append(String.format("%08x%n", cpu.dtcmReg));
                     java.nio.file.Path rp = java.nio.file.Paths.get("/tmp/opencode/ref_main_entry.bin");
                     if (!java.nio.file.Files.exists(rp)) java.nio.file.Files.write(rp, sb.toString().getBytes());
                     int[][] rg2 = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
@@ -247,7 +257,12 @@ public final class Main {
                 System.out.printf("[MMU] va=%08x pa=%08x L1=%08x l2=%08x%n", va, cpu.va2pa(va), l1,
                     mem.read32((l1 & 0xFFFFFC00) + (((va>>>12)&0xFF)<<2)));
             }
-            if (tracer != null) tracer.notePC(cpu.r[15]);
+            if (tracer != null) { tracer.notePC(cpu.r[15]); tracer.currentPC = cpu.r[15]; }
+            if (tracer != null && tracer instanceof TraceMemory) {
+                TraceMemory tm = (TraceMemory) tracer;
+                tm.windowStep = cpu.instructions;
+                tm.traceWindow = fromMain && cpu.instructions >= 34850 && cpu.instructions <= 34920;
+            }
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
 
             if ((cpu.r[15] & 0xF0000000) == 0 && cpu.instructions > 1000000000L && !enteredLow) {

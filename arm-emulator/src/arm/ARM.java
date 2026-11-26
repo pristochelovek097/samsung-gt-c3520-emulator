@@ -85,11 +85,19 @@ public final class ARM {
     }
 
     private int tlbVaTag = -1, tlbPaBase = 0, tlbMask = 0xFFF;
+    // ARM926EJ-S: регионы TCM задаются отдельно (MCR p15,0,Rd,c9,c1,opc2):
+    // opc2=0 → DTCM, opc2=1 → ITCM. Байпасят MMU в своём окне.
+    public int itcmReg, dtcmReg;
 
     private int translate(int va) {
         // ITCM/DTCM (ARM926EJ-S): при активном CP15 c9 младшие адреса
         // обращаются во внутреннюю SRAM напрямую, минуя MMU.
-        if ((cp15[9] & 1) != 0 && va >= 0 && va < Memory.TCM_SIZE) return va;
+        if ((itcmReg & 1) != 0 && va >= 0 && va < Memory.TCM_SIZE) return va;
+        if ((dtcmReg & 1) != 0) {
+            int base = dtcmReg & 0xFFFFF000;
+            int size = 1 << ((((dtcmReg >>> 2) & 0x1F)) + 9);
+            if (va >= base && va < base + size) return va;   // DTCM: данные мимо MMU
+        }
         if ((cp15[1] & 1) == 0) return va;         // MMU выключен
         if ((va & ~tlbMask) == tlbVaTag) return tlbPaBase | (va & tlbMask);
         int ttbr = cp15[2] & 0xFFFFC000;
@@ -391,10 +399,18 @@ public final class ARM {
         }
         if ((insn & 0x0F000000) == 0x0E000000 && ((insn >>> 8) & 0xF) == 0xF) { // MCR/MRC CP15
             int crn = (insn >>> 16) & 0xF;              // CRn: биты 19-16
+            int crm = insn & 0xF;                       // CRm: биты 3-0 (c1 в c9,c1,opc2)
+            int opc2 = (insn >>> 5) & 7;                // opc2: биты 7-5
             int rd = (insn >>> 12) & 0xF;               // Rd: биты 15-12
-            if (bit(insn, 20)) r[rd] = cp15[crn];       // MRC
-            else {
-                cp15[crn] = readReg(rd);                 // MCR
+            if (bit(insn, 20)) {
+                if (crn == 9 && crm == 1) r[rd] = (opc2 == 1) ? itcmReg : dtcmReg;
+                else r[rd] = cp15[crn];                 // MRC
+            } else {
+                int val = readReg(rd);
+                if (crn == 9 && crm == 1) {
+                    if (opc2 == 1) itcmReg = val; else dtcmReg = val;
+                }
+                cp15[crn] = val;                 // MCR
                 if (crn == 1 || crn == 2 || crn == 3 || crn == 7 || crn == 8) tlbVaTag = -1;
             }
             return;
@@ -755,7 +771,8 @@ public final class ARM {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 16; i++) sb.append(String.format("r%-2d=%08x  ", i, r[i]));
         sb.append(String.format("%nCPSR=%08x instructions=%d", cpsr, instructions));
-        sb.append(String.format("%nCP15: c1=%08x c2(TTBR)=%08x c3=%08x", cp15[1], cp15[2], cp15[3]));
+        sb.append(String.format("%nCP15: c1=%08x c2(TTBR)=%08x c3=%08x ITCM=%08x DTCM=%08x",
+                cp15[1], cp15[2], cp15[3], itcmReg, dtcmReg));
         return sb.toString();
     }
 }
