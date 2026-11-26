@@ -369,6 +369,7 @@ public final class Main {
             System.out.printf("[TAB40] va=ca2ccabc pa=%08x:", tabPa);
             for (int k = 0; k < 40; k++) {
                 int v = mem.read32(tabPa + k * 0x14 + 4);
+                if (v == 0) System.out.printf("[TAB40] ZERO slot=%d addr=%08x%n", k, 0xca2ccabc + k*0x14);
                 if ((v & 0xF0000000) == 0xC0000000) nz++;
                 if (k < 8) System.out.printf(" %08x", v);
             }
