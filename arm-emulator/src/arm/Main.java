@@ -234,7 +234,6 @@ public final class Main {
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
         boolean[] dbgSrv = new boolean[1];
-        int dbgE = 0;
         boolean[] dbgBm = new boolean[1];
         boolean[] dbgF = new boolean[1];
         boolean[] dbgShut = new boolean[1];
@@ -341,9 +340,7 @@ public final class Main {
             // заводской дескриптор: obj -> vptr-значение 0xC0D4CDCC, byte+8=1.
             if ((startRoot || fromMain) && cpu.r[15] == 0xc0228680 && cpu.r[0] == 0xa && !dbgSrv[0]) {
                 dbgSrv[0] = true;
-                for (int k = 0; k < 12; k++) mem.write8(0xc1ab5000 + k, (byte) "LOG OK\n\0".charAt(k % 9));
-        mem.write8(0xc1ab5008, 0);
-        mem.write32(0xc1ab0100, 0xc0d4cdcc);
+                mem.write32(0xc1ab0100, 0xc0d4cdcc);
                 mem.write32(0xc1ab0000, 0xc1ab0100);
                 mem.write8(0xc1ab0008, 1);
                 mem.write32(0xc1ab0010, 0xc1ab0000);
@@ -355,10 +352,6 @@ public final class Main {
                 mem.write32(0xc1ca0178, 0x20000000);
                 System.out.printf("[BOOTMODE] step=%d val=%08x%n", cpu.instructions, mem.read32(0xc1ca0178));
             }
-            if (fromMain && cpu.r[15] == 0xc035cb60 && dbgE++ < 5) { cpu.r[1] = 0xc1ab5000; }
-            if (fromMain && cpu.r[15] == 0xc0449c38 && dbgE++ < 6)
-                System.out.printf("[R1] %d sp=%08x sp4c=%08x r1=%08x%n", cpu.instructions, cpu.r[13], mem.read32(cpu.r[13]+0x4c), cpu.r[1]);
-            if (fromMain && cpu.r[15] == 0xc035cb60 && dbgE++ < 5)
                 System.out.printf("[E] %d pc=%08x r0=%08x r1=%08x r2=%08x r3=%08x lr=%08x%n",
                   cpu.instructions, cpu.r[15], cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[14]);
             cpu.step(trace);
