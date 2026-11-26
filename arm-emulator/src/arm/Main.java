@@ -91,6 +91,7 @@ public final class Main {
         // Битовая маска доступных разделов/устройств в контроллере (0x7001b000).
         mem.setMMIO(0x7001b038, 0xFFFFFFFF);
         mem.setMMIO(0x7001b03c, 0xFFFFFFFF);
+        mem.setMMIO(0x7001b014, 0x00040000);   // готовность контроллера (bit18)
         // Таблица сервисных указателей в RAM (BLX r0 в 0x2FFE6F3C):
         // индекс берётся из [0x7000102c] (по умолчанию 0).
         deferred.add(() -> {

@@ -77,6 +77,7 @@ public class Memory {
     }
 
     public int read32(int addr) {
+        if (addr == 0x7400202c) return 0x00000200;  // LCD готов (bit9)
         if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0)
             return nand.read(addr);
         Integer fixed = mmio.get(addr & ~3);
