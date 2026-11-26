@@ -132,8 +132,11 @@ fn main() {
     mem.write32(0xC3FF_F15C, 1);
     mem.write32(0xC99A_0C68, 0xC046_B861);
 
-    mem.write16(0xC1B5_1BEC, 0x0090);
-    for k in 0..0x90u32 { mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); mem.write32(0xC1C7_6BE4 + k*8, 1); }
+    mem.write16(0xC1B5_1BEC, 0x0092);
+    mem.write8(0xC1AC_619D, 1);   // флаг 0xC04571A8 (byte == 1)
+    mem.write8(0xC1B5_1B47, 1);
+    mem.write16(0xC1B5_1B48, 0xFFFF);   // счётчик каналов для 0xC0419D4C
+    for k in 0..0x92u32 { mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); mem.write32(0xC1C7_6BE4 + k*8, 1); }
     mem.write32(0xC1AB_0000, 0xC1AB_0200);
     for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
     mem.write32(0xC1F2_A254, 0xC1AB_0000);
@@ -141,12 +144,14 @@ fn main() {
     mem.write32(0xC1D5_0000, 0xC9D5_0040);
     mem.write8(0xC1D5_0008, 1);
     mem.write32(0xC1D5_0040, 0xC0D4_CDCC);
+    mem.write8(0xC1D5_0048, 1);   // байт +8 у [[entry]]
+    mem.write8(0xC1D5_0054, 1);   // байт [obj+12*n+8] при n=1
     // Остальные сервисы: [entry] = obj, [entry+4]=1, байт obj+20 == 1
     mem.write32(0xC1D5_0100, 0xC9D5_0200);
     mem.write8(0xC1D5_0104, 1);
     mem.write8(0xC1D5_0214, 1);
     mem.write32(0xC1D5_0200, 0xC9D5_0300);
-    for k in 0..0x90u32 {
+    for k in 0..0x92u32 {
         let e = if k == 0xA { 0xC9D5_0000u32 } else { 0xC9D5_0100u32 };
         mem.write32(0xC1C7_6BE0 + k*8, e);
         mem.write32(0xC1C7_6BE4 + k*8, 1);
@@ -194,6 +199,8 @@ fn main() {
     let mut bootmode_done = false;
     let mut skip_count = 0u32;
     let mut irq_injected = false;
+    let mut re_count = 0u32;
+    let mut dbg_once = false;
     let mut saw_os_init = false;
     let mut saw_dispatch = false;
     let t0 = Instant::now();
@@ -224,18 +231,47 @@ fn main() {
             }
         }
         if from_main && pc == 0xC043_3714 {
-            cpu.mem.write16(0xC1B5_1BEC, 0x0090);
-            for k in 0..0x90u32 { cpu.mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); cpu.mem.write32(0xC1C7_6BE4 + k*8, 1); }
-            cpu.mem.write32(0xC1AB_0000, 0xC1AB_0200);
-            cpu.mem.write8(0xC1AB_0214, 1);
+            // Таблица сервисов пересоздаётся ядром: восстанавливаем честные объекты
+            // в верхней SDRAM (VA 0xC9D50000 / 0xC9D50100 -> PA 0xC1D50000 / 0xC1D50100).
+            cpu.mem.write16(0xC1B5_1BEC, 0x0092);
+            let pflag = cpu.va2pa(0xC9AC_619D);
+            cpu.mem.write8(pflag, 1);
+            cpu.mem.write8(0xC1B5_1B47, 1);
+            cpu.mem.write16(0xC1B5_1B48, 0xFFFF);
+            for k in 0..0x92u32 {
+                let e = if k == 0xA { 0xC9D5_0000u32 } else { 0xC9D5_0100u32 };
+                cpu.mem.write32(0xC1C7_6BE0 + k*8, e);
+                cpu.mem.write32(0xC1C7_6BE4 + k*8, 1);
+            }
+            cpu.mem.write32(0xC1D5_0000, 0xC9D5_0040);
+            cpu.mem.write8(0xC1D5_0008, 1);
+            cpu.mem.write32(0xC1D5_0040, 0xC0D4_CDCC);
+            cpu.mem.write8(0xC1D5_0048, 1);
+            cpu.mem.write8(0xC1D5_0054, 1);
+            cpu.mem.write32(0xC1D5_0100, 0xC9D5_0200);
+            cpu.mem.write8(0xC1D5_0104, 1);
+            cpu.mem.write8(0xC1D5_0214, 1);
         }
-        if from_main && (473_840..473_900).contains(&i) {
-            println!("[W] {} pc={:08x} ins={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r4={:08x} r5={:08x} r6={:08x} lr={:08x}",
-                i, pc, cpu.mem.read32(pc&!3), cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[4], cpu.r[5], cpu.r[6], cpu.r[14]);
+        // Эмуляция пула блоков: честные данные для аллокатора 0xC0411BDE.
+        if from_main && pc == 0xC041_1BDE && !dbg_once {
+            dbg_once = true;
+            let p_base = cpu.va2pa(0xC9B5_1B84);
+            let p_n0 = cpu.va2pa(0xC9B5_1BDE);
+            let p_n1 = cpu.va2pa(0xC9B5_1B46);
+            let base = cpu.mem.read32(p_base);
+            let bp = cpu.va2pa(base);
+            cpu.mem.write16(p_n0, 0);
+            cpu.mem.write8(p_n1, 0x20);
+            for k in 0..0x20u32 {
+                cpu.mem.write32(bp + k*0x1c, 0xC9D5_1000 + k*0x40);
+                cpu.mem.write32(bp + k*0x1c + 8, 0x40);
+                cpu.mem.write8(0xC1D5_1000 + k*0x40, k);
+            }
         }
         cpu.step(!quiet && i < 60);
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
+        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if i == 1_000_000 { cpu.mem.io_seen.clear(); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
             irq_injected = true;
@@ -265,6 +301,7 @@ fn main() {
     println!("[TAB40] va=ca2ccabc pa={:08x} live={}/40", pa, live);
     println!("[LCD] commands={} pixels={} frames={}", cpu.mem.lcd.commands,
              cpu.mem.lcd.pixels, cpu.mem.lcd.frames);
+    println!("[RE] count={}", re_count);
     println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
              cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);
     println!("[WFI] count={} data_abort={} prefetch_abort={}", cpu.wfi_count,

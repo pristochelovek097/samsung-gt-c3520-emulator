@@ -25,6 +25,7 @@ pub struct Arm<'a> {
     irq_count: u32,
     pub irq_limit: u32,
     pub zero_run: i32,
+    pub msr_dbg: u32,
     pub trace_all: bool,
     pub wfi_count: u64,
     pub irq_open_steps: u64,
@@ -45,7 +46,7 @@ impl<'a> Arm<'a> {
             r: [0; 16], cpsr: 0xD3, spsr: 0, mem, instructions: 0, halted: false,
             halt_reason: String::new(), cp15: [0; 16], banked: [[0; 2]; 32], fiq: [0; 5],
             itcm_reg: 0, dtcm_reg: 0, shifter_carry: 0, thumb_bl_insn: 0, thumb_bl_addr: 0,
-            thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0,
+            thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0, msr_dbg: 0,
             trace_all: false, wfi_count: 0, irq_open_steps: 0, data_aborts: 0,
             prefetch_aborts: 0, strict_aborts: false, after_zero_fill: false,
             tlb_va_tag: -1, tlb_pa_base: 0, tlb_mask: 0xFFF,
@@ -102,6 +103,22 @@ impl<'a> Arm<'a> {
         self.r[13] = self.banked[nw][0];
         self.r[14] = self.banked[nw][1];
         if new_mode & 0x1F == 0x11 { for k in 0..5 { self.r[8 + k] = self.fiq[k]; } }
+    }
+
+    // MSR cpsr_c: bil stays in the control field (I/F) must be writable.
+    fn msr_control(&mut self, v: u32) {
+        let old_mode = self.cpsr & 0x1F;
+        let old = Self::bank_index(old_mode);
+        self.banked[old][0] = self.r[13];
+        self.banked[old][1] = self.r[14];
+        if old_mode == 0x11 { for k in 0..5 { self.fiq[k] = self.r[8 + k]; } }
+        let t = self.cpsr & 0x20;
+        self.cpsr = (self.cpsr & 0xFFFF_FF00) | (v & 0xC0) | t | (v & 0x1F);
+        let nm = self.cpsr & 0x1F;
+        let nw = Self::bank_index(nm);
+        self.r[13] = self.banked[nw][0];
+        self.r[14] = self.banked[nw][1];
+        if nm == 0x11 { for k in 0..5 { self.r[8 + k] = self.fiq[k]; } }
     }
 
     fn raise_svc(&mut self) {
@@ -373,7 +390,7 @@ impl<'a> Arm<'a> {
         if (insn & 0x0FFF_0FFF) == 0x010F_0000 { self.r[((insn >> 12) & 0xF) as usize] = self.cpsr; return; }
         if (insn & 0x0FB0_FFF0) == 0x0120_F000 {
             let v = self.read_reg(insn & 0xF);
-            self.switch_mode(v);
+            self.msr_control(v);
             return;
         }
         // MCR/MRC CP15
