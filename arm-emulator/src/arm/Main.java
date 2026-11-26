@@ -226,6 +226,7 @@ public final class Main {
                 System.out.printf("[FIRST] %08x cpsr=%08x%n", cpu.r[15], cpu.cpsr);
             if (tracer != null) tracer.notePC(cpu.r[15]);
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
+
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }

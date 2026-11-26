@@ -80,12 +80,12 @@ public final class ARM {
         if ((newMode & 0x1F) == 0x11) for (int k = 0; k < 5; k++) r[8 + k] = fiq[k];
     }
 
-    private int tlbVaTag = -1, tlbPaBase = 0;
+    private int tlbVaTag = -1, tlbPaBase = 0, tlbMask = 0xFFF;
 
     private int translate(int va) {
         if ((cp15[1] & 1) == 0) return va;         // MMU выключен
         int tag = va & 0xFFFFF000;
-        if (tag == tlbVaTag) return tlbPaBase | (va & 0xFFF);
+        if (tag == tlbVaTag) return tlbPaBase | (va & tlbMask);
         int ttbr = cp15[2] & 0xFFFFC000;
         int l1 = mem.read32(ttbr + ((va >>> 20) << 2));
         int type = l1 & 3;
@@ -94,8 +94,8 @@ public final class ARM {
             int l2base = l1 & 0xFFFFF000;
             int l2 = mem.read32(l2base + (((va >>> 12) & 0xFF) << 2));
             int t = l2 & 3;
-            if (t == 2) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFFF000; return tlbPaBase | (va & 0xFFF); }
-            if (t == 1) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFF0000; return tlbPaBase | (va & 0xFFFF); }
+            if (t == 2) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFFF000; tlbMask = 0xFFF; return tlbPaBase | (va & 0xFFF); }
+            if (t == 1) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFF0000; tlbMask = 0xFFFF; return tlbPaBase | (va & 0xFFFF); }
         }
         return va;                                                   // fallback: identity
     }
@@ -628,20 +628,21 @@ public final class ARM {
             else { if ((insn & 0x0800) != 0) r[rd] = rd16(a); else wr16(a, readReg(rd) & 0xFFFF); }
             return;
         }
-        if (top == 9) { // SP-relative word
+        if (top == 9) {
             rd = (insn >>> 8) & 7;
             int a = readReg(13) + ((insn & 0xFF) << 2);
             if ((insn & 0x0800) != 0) r[rd] = rd32(a); else wr32(a, readReg(rd));
             return;
         }
         if ((top == 0xA || top == 0xB)
-                && (insn & 0xFE00) != 0xB400 && (insn & 0xFE00) != 0xBC00) { // ADD Rd,SP/PC,#imm
+                && (insn & 0xFE00) != 0xB400 && (insn & 0xFE00) != 0xBC00
+                && (insn & 0xFF00) != 0xB000) { // ADD Rd,SP/PC,#imm (0xB0xx — это SUB/ADD SP)
             rd = (insn >>> 8) & 7;
             imm = (insn & 0xFF) << 2;
             r[rd] = readReg(((insn >>> 11) & 1) == 0 ? 13 : 15) + imm;
             return;
         }
-        if ((insn & 0xFF00) == 0xB000) { // ADD/SUB SP,#imm
+        if ((insn & 0xFF00) == 0xB000) {
             imm = (insn & 0x7F) << 2;
             r[13] += ((insn & 0x80) != 0) ? -imm : imm;
             return;
