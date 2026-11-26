@@ -167,7 +167,7 @@ public final class Main {
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
-            if (startRoot) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
+            if (startRoot || fromMain) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
             if (saveSnap && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
                 StringBuilder sb = new StringBuilder();
@@ -243,7 +243,7 @@ public final class Main {
                 System.out.printf("%03x=%08x ", idx, mem.read32(0xc3bc4000 + idx*4));
             System.out.println();
         }
-        if (startRoot) {
+        if (startRoot || fromMain) {
             System.out.println("[HOTPC] " + pcHist.entrySet().stream()
                 .sorted((a,b) -> Integer.compare(b.getValue(), a.getValue())).limit(12)
                 .map(e -> String.format("%08x:%d", e.getKey(), e.getValue()))
