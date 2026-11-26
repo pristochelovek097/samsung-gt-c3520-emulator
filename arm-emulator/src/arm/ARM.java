@@ -12,6 +12,10 @@ public final class ARM {
     private int shifterCarry;
     private int thumbBlInsn;
     private int thumbBlAddr;
+    // BL/BLX состоит из двух полуслов: вторая половина動作 ONLY immediately
+    // после первой. Без этого флага переход в середину пары использует
+    // устаревшее значение thumbBlInsn от давнего вызова (ложный BLX).
+    private boolean thumbBlPending;
     private boolean irqTriggered;
     public int irqLimit = 3;
     private int irqCount;
@@ -518,6 +522,10 @@ public final class ARM {
     private void stepThumb(boolean trace) {
         int addr = r[15] & ~1;
         int insn = rd16(addr);
+        // Половина BL/BLX действительна только если предыдущая инструкция была
+        // его первой половиной. Иначе это обычная B (0xE800..0xEFFF) или no-op.
+        boolean blWasPending = thumbBlPending;
+        thumbBlPending = false;
         if (insn == 0) { if (++zeroRun > 500) { halted = true; haltReason = "unmapped Thumb memory at " + Integer.toHexString(addr); } }
         else zeroRun = 0;
         r[15] = addr + 2;
@@ -705,6 +713,12 @@ public final class ARM {
             return;
         }
         if ((insn & 0xF800) == 0xE800) { // BLX immediate — ARM target
+            if (!blWasPending) { // сиротская вторая половина = обычная B
+                imm = (insn & 0x7FF) << 1;
+                if ((imm & 0x800) != 0) imm |= 0xFFFFF000;
+                r[15] += imm + 2;
+                return;
+            }
             int base = thumbBlAddr + 4 + ((thumbBlInsn << 21) >> 9);
             int target = (base + ((insn & 0x7FF) << 1)) & ~3;
             r[14] = (addr + 2) | 1;
@@ -715,9 +729,11 @@ public final class ARM {
         if ((insn & 0xF800) == 0xF000) { // BL, первая половина (11110 S imm10)
             thumbBlInsn = insn;
             thumbBlAddr = addr;
+            thumbBlPending = true;
             return;
         }
         if ((insn & 0xF800) == 0xF800) { // BL, вторая половина
+            if (!blWasPending) return; // сиротская вторая половина — ignore
             int s2 = (thumbBlInsn >>> 10) & 1;
             int i1 = (((insn >>> 13) & 1) ^ s2) ^ 1;
             int i2 = (((insn >>> 11) & 1) ^ s2) ^ 1;

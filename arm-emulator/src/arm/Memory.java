@@ -11,6 +11,9 @@ public class Memory {
 
     private final Map<Integer, byte[]> pages = new HashMap<>();
     private final Map<Integer, Integer> mmio = new HashMap<>();
+    private NandController nand;
+
+    public void setNandController(NandController c) { this.nand = c; }
 
     // Плоские физические области PNX4910: 32 МБ NOR/flash, 32 МБ SDRAM, 1 МБ SRAM.
     private static final int FLASH_BASE = 0xC0000000, FLASH_SIZE = 0x02000000;
@@ -56,6 +59,8 @@ public class Memory {
     }
 
     public int read32(int addr) {
+        if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0)
+            return nand.read(addr);
         Integer fixed = mmio.get(addr & ~3);
         if (fixed != null) return fixed;
         int a = addr & ~3;
@@ -70,6 +75,10 @@ public class Memory {
     }
 
     public void write32(int addr, int value) {
+        if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) {
+            nand.write(addr, value);
+            return;
+        }
         int a = addr & ~3;
         byte[] f = flat(a);
         if (f != null) {
@@ -111,6 +120,7 @@ public class Memory {
     }
 
     public int read8(int addr) {
+        if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) return nand.read(addr) & 0xFF;
         byte[] f = flat(addr);
         if (f != null) return f[flatOff(addr)] & 0xFF;
         byte[] p = page(addr, false);
@@ -118,6 +128,7 @@ public class Memory {
     }
 
     public void write8(int addr, int value) {
+        if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) { nand.write(addr, value); return; }
         byte[] f = flat(addr);
         if (f != null) { f[flatOff(addr)] = (byte) value; return; }
         byte[] p = page(addr, true);

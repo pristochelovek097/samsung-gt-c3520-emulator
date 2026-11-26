@@ -22,6 +22,9 @@ public final class Main {
         for (String a : args) if ("--start-root".equals(a)) startRoot = true;
         TraceMemory tracer = traceIO ? new TraceMemory() : null;
         Memory mem = tracer != null ? tracer : new Memory();
+        // Виртуальный NAND 0x7D80xxxx поfactory-карте .ptt (128 МБ, 2 КБ/страница).
+        NandController nand = new NandController(dir);
+        mem.setNandController(nand);
         // При холодном старте из ROOT физический адрес 0 не содержит USB-агента.
         if (!startRoot) mem.load(boot, 0);
         // При холодном старте из ROOT быстрая SRAM 0x2FFE0000 не содержит USB-агента.
@@ -169,7 +172,7 @@ public final class Main {
         long irqOpenSteps = 0;
         boolean irqOpenPrev = true;
         int dbgInit = 0;
-        String[] ring = new String[24]; int ringN = 0; boolean enteredLow = false;
+        String[] ring = new String[64]; int ringN = 0; boolean enteredLow = false;
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
             if (fromMain) {
@@ -251,9 +254,9 @@ public final class Main {
                     if (e != null) System.out.println(e);
                 }
             }
-            if (cpu.instructions >= 999990000L) {
+            {
             int[] rr = cpu.r.clone();
-            StringBuilder rb = new StringBuilder(String.format("%08x %08x", cpu.r[15], mem.read32(cpu.r[15] & ~1)));
+            StringBuilder rb = new StringBuilder(String.format("%d %08x %08x", cpu.instructions, cpu.r[15], mem.read32(cpu.r[15] & ~1)));
             for (int k = 0; k < 16; k++) rb.append(String.format(" %08x", rr[k]));
             rb.append(String.format(" cpsr=%08x", cpu.cpsr));
             ring[ringN++ % ring.length] = rb.toString();
@@ -296,11 +299,15 @@ public final class Main {
         }
         if (fromMain) System.out.println("[IRQOPEN] steps=" + irqOpenSteps);
         if (startRoot || fromMain) {
-            System.out.print("[TAB40]");
-            int tab = mem.read32(0xca2ccabc == 0 ? 0 : 0); // placeholder
-            int base = 0xca2ccabc;
-            for (int k = 0; k < 5; k++) System.out.printf(" %08x", mem.read32(base + k*0x14 + 4));
-            System.out.println();
+            int tabPa = cpu.va2pa(0xca2ccabc);
+            int nz = 0;
+            System.out.printf("[TAB40] va=ca2ccabc pa=%08x:", tabPa);
+            for (int k = 0; k < 40; k++) {
+                int v = mem.read32(tabPa + k * 0x14 + 4);
+                if ((v & 0xF0000000) == 0xC0000000) nz++;
+                if (k < 8) System.out.printf(" %08x", v);
+            }
+            System.out.printf(" ... live=%d/40%n", nz);
         }
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
