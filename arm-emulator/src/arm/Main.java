@@ -327,10 +327,6 @@ public final class Main {
             rb.append(String.format(" cpsr=%08x", cpu.cpsr));
             ring[ringN++ % ring.length] = rb.toString();
             }
-            if (fromMain && !dbgA0[0] && mem.read32(0xc3fff150) == 0xa0) {
-                dbgA0[0] = true;
-                System.out.printf("[A0APPEAR] step=%d pc=%08x lr=%08x r9=%08x%n", cpu.instructions, cpu.r[15], cpu.r[14], cpu.r[9]);
-            }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
