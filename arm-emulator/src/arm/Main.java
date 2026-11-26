@@ -165,6 +165,7 @@ public final class Main {
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
+        String[] ring = new String[24]; int ringN = 0; boolean enteredLow = false;
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
             if (startRoot || fromMain) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
@@ -227,6 +228,21 @@ public final class Main {
             if (tracer != null) tracer.notePC(cpu.r[15]);
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
 
+            if ((cpu.r[15] & 0xF0000000) == 0 && cpu.instructions > 1000000000L && !enteredLow) {
+                enteredLow = true;
+                System.out.printf("[ENTERLOW] instr=%d pc=%08x lr=%08x%n", cpu.instructions, cpu.r[15], cpu.r[14]);
+                for (int k = 0; k < ring.length; k++) {
+                    String e = ring[(ringN + k) % ring.length];
+                    if (e != null) System.out.println(e);
+                }
+            }
+            if (cpu.instructions >= 999990000L) {
+            int[] rr = cpu.r.clone();
+            StringBuilder rb = new StringBuilder(String.format("%08x %08x", cpu.r[15], mem.read32(cpu.r[15] & ~1)));
+            for (int k = 0; k < 16; k++) rb.append(String.format(" %08x", rr[k]));
+            rb.append(String.format(" cpsr=%08x", cpu.cpsr));
+            ring[ringN++ % ring.length] = rb.toString();
+            }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
@@ -255,6 +271,13 @@ public final class Main {
                 if (nz > bestNz) { bestNz = nz; bestBase = a; }
             }
             System.out.printf("[FB] best SDRAM candidate=%08x nonzero16=%d%n", bestBase, bestNz);
+        }
+        if (cpu.halted) {
+            System.out.println("[LAST]");
+            for (int k = 0; k < ring.length; k++) {
+                String e = ring[(ringN + k) % ring.length];
+                if (e != null) System.out.println(e);
+            }
         }
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
