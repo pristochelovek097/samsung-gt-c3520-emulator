@@ -128,6 +128,13 @@ fn main() {
     mem.set_mmio(0x7001_B014, 0x4_0000);
     mem.set_mmio(0x7001_B034, 0x80);
     mem.write32(0xC3FF_F15C, 1);
+    mem.write16(0xC1B5_1BEC, 0x0090);   // service count cell read by 0xC0433716
+    for k in 0..40u32 {
+        mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000);
+        mem.write32(0xC1C7_6BE4 + k*8, 1);
+    }
+    mem.write32(0xC1AB_0000, 0xC1AB_0200);
+    for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
     mem.write32(0xC1F2_A254, 0xC1AB_0000);
     mem.write32(0xC99A_0C68, 0xC046_B861);
 
