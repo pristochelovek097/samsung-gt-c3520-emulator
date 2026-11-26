@@ -226,6 +226,7 @@ public final class Main {
         mem.write32(0xc3fff15c, 1);
         mem.setMMIO(0x7001b034, 0x80);
         mem.write32(0xc1f2a254, 0xc1ab0000);
+        mem.write32(0xc99a0c68, 0xc046b861);   // корректный Thumb-вход в 0xC046B860
         System.out.println("ARM9 emulator — C3520 bootloader");
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
