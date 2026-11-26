@@ -227,6 +227,7 @@ public final class Main {
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
+        boolean[] dbgSrv = new boolean[1];
         boolean[] dbgShut = new boolean[1];
         long irqOpenSteps = 0;
         boolean irqOpenPrev = true;
@@ -328,6 +329,17 @@ public final class Main {
             ring[ringN++ % ring.length] = rb.toString();
             }
                 System.out.printf("[REG] step=%d r0=%08x r1=%08x lr=%08x%n", cpu.instructions, cpu.r[0], cpu.r[1], cpu.r[14]);
+            // Прошивка запрашивает сервис №10 (0xC0411874) — подаём его
+            // заводской дескриптор: obj -> vptr-значение 0xC0D4CDCC, byte+8=1.
+            if ((startRoot || fromMain) && cpu.r[15] == 0xc0228680 && cpu.r[0] == 0xa && !dbgSrv[0]) {
+                dbgSrv[0] = true;
+                mem.write32(0xc1ab0100, 0xc0d4cdcc);
+                mem.write32(0xc1ab0000, 0xc1ab0100);
+                mem.write8(0xc1ab0008, 1);
+                mem.write32(0xc1ab0010, 0xc1ab0000);
+                mem.write32(0xc1c76c30, 0xc1ab0010);
+                System.out.printf("[SERVICE10] step=%d%n", cpu.instructions);
+            }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
