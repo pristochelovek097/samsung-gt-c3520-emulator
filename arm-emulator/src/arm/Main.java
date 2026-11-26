@@ -229,6 +229,7 @@ public final class Main {
         int dbgX = 0;
         boolean[] dbgSrv = new boolean[1];
         boolean[] dbgBm = new boolean[1];
+        boolean[] dbgF = new boolean[1];
         boolean[] dbgShut = new boolean[1];
         long irqOpenSteps = 0;
         boolean irqOpenPrev = true;
