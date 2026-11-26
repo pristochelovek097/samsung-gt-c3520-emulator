@@ -100,6 +100,8 @@ public final class ARM {
         return va;                                                   // fallback: identity
     }
 
+    public int va2pa(int va) { return translate(va); }
+
     private int rd32(int a) { return mem.read32(translate(a)); }
     private void wr32(int a, int v) { mem.write32(translate(a), v); }
     private int rd16(int a) { return mem.read16(translate(a)); }
