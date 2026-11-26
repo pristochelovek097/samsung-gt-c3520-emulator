@@ -610,3 +610,18 @@ ARM-дизассембл 0xC0001134..0xC000117C: это memset по 32 байт�
 `c0436...`, `c02e1...`, `c0276...`, `c0451...`, `c99a...` — настоящая инициализация RTOS.
 L1: 000=c3bcbc11, 300=c3bcc011, a00=c3bc8411, c00=c3bcb011.
 Именно fast-path'ы оставляли неверные регистры/флаги и ломали r0=4. Push: 31d797f.
+
+## Карта разделов из .ptt (2026-11-26)
+Файл `/home/bogdan/Downloads/C3520XELJ1/C3520XFLJ1_BIN/C3520XELaFleur.ptt` — текстовый INI:
+IMAGE off=0x20000 size=0x20000 load=0xC0020000;
+LCDACT off=0x40000 size=0x20000 load=0xC0000000 exec=1;
+ROOT off=0x60000 size=0x20000 load=0xC0000000 exec=1;
+MAIN off=0x80000 size=0xC00000 load=0xC0020000;
+DSP off=0xC80000 size=0x60000 load=0xC1920000;
+PAGE off=0xCE0000 size=0x600000 load=0xA0000000 (load=0);
+DATA_RW off=0x12E0000 size=0x40000 load=0xC1AB5000;
+FS a/b/c/d off=0x1320000/0x3F60000/0x5460000/0x6E00000; sysv off=0x7C00000.
+Адреса 0xC0C00000 / 0xC0AC0000 / 0xC0738000 из NIST-верификации попадают
+внутрь распакованного MAIN; 0xC8000000 — окно RAM/NAND; 0xC1000000 — внутри
+flash-окна, куда наш flashLocked запрещает запись (возможная причина отказа
+верификации). Нужна эмуляция NAND-окна и правильная транслиция 0xC1000000 в SDRAM.
