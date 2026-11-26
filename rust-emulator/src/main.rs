@@ -171,8 +171,6 @@ fn main() {
     let mut bootmode_done = false;
     let mut skip_count = 0u32;
     let mut irq_injected = false;
-    let mut ring: Vec<(u64, u32, u32, u32, u32, u32, u32)> = Vec::with_capacity(80);
-    let mut ring_dumped = false;
     let mut saw_os_init = false;
     let mut saw_dispatch = false;
     let t0 = Instant::now();
@@ -203,18 +201,6 @@ fn main() {
             }
         }
         cpu.step(!quiet && i < 60);
-        if from_main && !ring_dumped && i < 1_000_000 {
-            let w = cpu.mem.read32(pc & !3);
-            ring.push((cpu.instructions, pc, w, cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[14]));
-            if ring.len() > 80 { ring.remove(0); }
-            if pc == 0xC03E_00E4 {
-                ring_dumped = true;
-                println!("[POWEROFF] step={} lr={:08x}", cpu.instructions, cpu.r[14]);
-                for (st, p, w, r0, r1, r2, lr) in &ring {
-                    println!("[R] {} {:08x} {:08x} r0={:08x} r1={:08x} r2={:08x} lr={:08x}", st, p, w, r0, r1, r2, lr);
-                }
-            }
-        }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
         if i == 1_000_000 { cpu.mem.io_seen.clear(); }
