@@ -166,9 +166,16 @@ public final class Main {
         java.io.PrintWriter regTrace = null;
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
+        long irqOpenSteps = 0;
+        boolean irqOpenPrev = true;
+        int dbgInit = 0;
         String[] ring = new String[24]; int ringN = 0; boolean enteredLow = false;
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
+            if (fromMain) {
+                if ((cpu.cpsr & 0x80) == 0) irqOpenSteps++;
+                if (((cpu.cpsr & 0x80) == 0) != irqOpenPrev) { System.out.printf("[IRQMASK] instr=%d I=%d pc=%08x%n", cpu.instructions, (cpu.cpsr&0x80)==0?0:1, cpu.r[15]); irqOpenPrev=(cpu.cpsr&0x80)==0; }
+            }
             if (startRoot || fromMain) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
             if (saveSnap && !snapped && cpu.r[15] == 0xc00004a0) {
                 snapped = true;
@@ -287,6 +294,7 @@ public final class Main {
                 if (e != null) System.out.println(e);
             }
         }
+        if (fromMain) System.out.println("[IRQOPEN] steps=" + irqOpenSteps);
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
 }
