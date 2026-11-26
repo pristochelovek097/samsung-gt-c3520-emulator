@@ -102,8 +102,14 @@ public final class ARM {
 
     public int va2pa(int va) { return translate(va); }
 
-    private int rd32(int a) { return mem.read32(translate(a)); }
-    private void wr32(int a, int v) { mem.write32(translate(a), v); }
+    // ARMv5TE: невыровненный LDR/STR читает выровненное слово и вращает его
+    private int rd32(int a) {
+        int w = mem.read32(translate(a & ~3));
+        return (a & 3) == 0 ? w : Integer.rotateRight(w, (a & 3) * 8);
+    }
+    private void wr32(int a, int v) {
+        mem.write32(translate(a & ~3), (a & 3) == 0 ? v : Integer.rotateLeft(v, (a & 3) * 8));
+    }
     private int rd16(int a) { return mem.read16(translate(a)); }
     private void wr16(int a, int v) { mem.write16(translate(a), v); }
     private int rd8(int a) { return mem.read8(translate(a)); }

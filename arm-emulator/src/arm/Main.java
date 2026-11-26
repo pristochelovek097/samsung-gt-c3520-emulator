@@ -93,6 +93,7 @@ public final class Main {
         final LcdController lcd = new LcdController();
         final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
         if (window != null) lcd.testPattern();
+        if (startRoot || fromSnap) mem.lockFlash();
         ARM cpu = new ARM(mem);
         if (noFast) cpu.fastPaths = false;
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
