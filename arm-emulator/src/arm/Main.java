@@ -339,7 +339,7 @@ public final class Main {
                 mem.write32(0xc1ab0000, 0xc1ab0100);
                 mem.write8(0xc1ab0008, 1);
                 mem.write32(0xc1ab0010, 0xc1ab0000);
-                mem.write32(0xc1c76c30, 0xc1ab0010);
+                mem.write32(0xc1c76c30, 0xc1ab0010);   // сервис №10
                 System.out.printf("[SERVICE10] step=%d%n", cpu.instructions);
             }
             if ((startRoot || fromMain) && cpu.instructions == 1000 && !dbgBm[0]) {
