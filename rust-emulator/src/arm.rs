@@ -52,6 +52,7 @@ impl<'a> Arm<'a> {
             tlb_cache: vec![(0xFFFF_FFFF, 0); 256],
             fetch_pc: 0xFFFF_FFFF, fetch_pa: 0, fetch_insn: 0,
         };
+        a.cp15[0] = 0x4106_9265;   // Main ID: ARM926EJ-S rev 5
         a.r[13] = 0x4000_1000;
         a.banked[1][0] = 0x4000_0E00;
         a.banked[2][0] = 0x4000_0F00;
@@ -383,6 +384,14 @@ impl<'a> Arm<'a> {
             let rd = (insn >> 12) & 0xF;
             if bit(insn, 20) {
                 if crn == 9 && crm == 1 { self.r[rd as usize] = if opc2 == 1 { self.itcm_reg } else { self.dtcm_reg }; }
+                else if crn == 0 && crm == 0 {
+                    self.r[rd as usize] = match opc2 {
+                        0 => 0x4106_9265,  // Main ID Register
+                        1 => 0x1D11_2152,  // Cache Type Register
+                        2 => 0x0001_0001,  // TCM Status Register
+                        _ => self.cp15[0],
+                    };
+                }
                 else { self.r[rd as usize] = self.cp15[crn as usize]; }
             } else {
                 let v = self.read_reg(rd);

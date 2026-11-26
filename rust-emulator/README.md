@@ -25,7 +25,8 @@ cargo build --release
 
 ## Реализовано (1-в-1 с Java-портом)
 
-- `arm.rs`: direct-mapped TLB (256 записей, 4 КБ) + PC/инструкции-кэш,
+- `arm.rs`: CP15 ID-регистры ARM926EJ-S (MIDR `0x41069265`, CTR `0x1D112152`,
+  TCM Status `0x00010001`), direct-mapped TLB (256 записей, 4 КБ) + PC/инструкции-кэш,
   hot-loop fast-path; все 7 режимов, banked SP/LR, FIQ r8-r12, CPSR-маска
   `0xF80000FF`, `thumbBlPending` (исправление сиротской половины BL/BLX),
   CLZ/QADD/QSUB/SMUL/SMLA, MRC/MCR CP15 с раздельными `itcmReg`/`dtcmReg`
