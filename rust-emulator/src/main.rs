@@ -3,6 +3,8 @@ mod lcd;
 mod memory;
 mod nand;
 mod qmdc;
+static CNT_PA: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static CNT_VAL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 use arm::Arm;
 use memory::Memory;
@@ -185,6 +187,8 @@ fn main() {
         cpu.cpsr = 0xD3;
     }
 
+    println!("[VAPA] count_va=c9b51bec -> {:08x}; table_va=c9c76be0 -> {:08x}; fb={:08x}",
+        cpu.va2pa(0xC9B5_1BEC), cpu.va2pa(0xC9C7_6BE0), cpu.va2pa(0xC9F2_A254));
     let mut hist: HashMap<u32, u64> = HashMap::new();
     let mut service10_done = false;
     let mut bootmode_done = false;
@@ -219,6 +223,7 @@ fn main() {
                 cpu.r[15] = 0xC035_CC06;
             }
         }
+        if from_main && pc == 0xC043_3714 { cpu.mem.write16(0xC1B5_1BEC, 0x0090); }
         cpu.step(!quiet && i < 60);
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
