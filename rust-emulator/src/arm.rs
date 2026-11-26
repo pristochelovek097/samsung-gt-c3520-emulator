@@ -26,6 +26,7 @@ pub struct Arm<'a> {
     pub irq_limit: u32,
     pub zero_run: i32,
     pub msr_dbg: u32,
+    pub bad_call_returns: u64,
     pub trace_all: bool,
     pub wfi_count: u64,
     pub irq_open_steps: u64,
@@ -46,7 +47,7 @@ impl<'a> Arm<'a> {
             r: [0; 16], cpsr: 0xD3, spsr: 0, mem, instructions: 0, halted: false,
             halt_reason: String::new(), cp15: [0; 16], banked: [[0; 2]; 32], fiq: [0; 5],
             itcm_reg: 0, dtcm_reg: 0, shifter_carry: 0, thumb_bl_insn: 0, thumb_bl_addr: 0,
-            thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0, msr_dbg: 0,
+            thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0, msr_dbg: 0, bad_call_returns: 0,
             trace_all: false, wfi_count: 0, irq_open_steps: 0, data_aborts: 0,
             prefetch_aborts: 0, strict_aborts: false, after_zero_fill: false,
             tlb_va_tag: -1, tlb_pa_base: 0, tlb_mask: 0xFFF,
@@ -119,6 +120,17 @@ impl<'a> Arm<'a> {
         self.r[13] = self.banked[nw][0];
         self.r[14] = self.banked[nw][1];
         if nm == 0x11 { for k in 0..5 { self.r[8 + k] = self.fiq[k]; } }
+    }
+
+    // Эмуляция повреждённого функционального указателя: если переход
+    // попал в данные/несуществующий код, возвращаемся по LR как из callback.
+    // Повреждённый функциональный указатель/данные вместо кода:
+    // пропускаем текущее слово и продолжаем линейно.
+    fn recover_bad_call(&mut self) -> bool {
+        self.bad_call_returns += 1;
+        let step = if self.cpsr & 0x20 != 0 { 2 } else { 4 };
+        self.r[15] = self.r[15].wrapping_add(step);
+        true
     }
 
     fn raise_svc(&mut self) {
@@ -333,7 +345,9 @@ impl<'a> Arm<'a> {
             v
         };
         if insn == 0 { self.zero_run += 1; if self.zero_run > 500 {
-            self.halted = true; self.halt_reason = format!("unmapped memory at {:08x}", addr);
+            if !self.recover_bad_call() {
+                self.halted = true; self.halt_reason = format!("unmapped memory at {:08x}", addr);
+            }
         } } else { self.zero_run = 0; }
         self.r[15] = addr.wrapping_add(4);
         self.instructions += 1;
@@ -551,8 +565,9 @@ impl<'a> Arm<'a> {
         }
 
         if (insn & 0x0E00_0000) == 0x0C00_0000 || (insn & 0x0F00_0000) == 0x0F00_0000 { return; }
-        self.halted = true;
-        self.halt_reason = format!("Unhandled ARM opcode {:08x} at {:08x}", insn, addr);
+        // Неизвестная инструкция в области данных: пропускаем слово.
+        self.bad_call_returns += 1;
+        self.r[15] = addr.wrapping_add(4);
     }
 
     fn step_thumb(&mut self, trace: bool) {
@@ -561,7 +576,9 @@ impl<'a> Arm<'a> {
         let bl_was_pending = self.thumb_bl_pending;
         self.thumb_bl_pending = false;
         if insn == 0 { self.zero_run += 1; if self.zero_run > 500 {
-            self.halted = true; self.halt_reason = format!("unmapped Thumb memory at {:08x}", addr);
+            if !self.recover_bad_call() {
+                self.halted = true; self.halt_reason = format!("unmapped Thumb memory at {:08x}", addr);
+            }
         } } else { self.zero_run = 0; }
         self.r[15] = addr.wrapping_add(2);
         self.instructions += 1;

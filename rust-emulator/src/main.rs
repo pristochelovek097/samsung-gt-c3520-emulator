@@ -211,8 +211,9 @@ fn main() {
     for i in 0..steps {
         if cpu.halted { break; }
         let pc = cpu.r[15];
-        if (start_root || from_main) && (i & 63) == 0 {
-            *hist.entry(pc & !1).or_insert(0) += 64;
+        // HOTPC: считаем редко (раз в 4096 тактов), чтобы не тормозить цикл
+        if (start_root || from_main) && (i & 4095) == 0 {
+            *hist.entry(pc & !1).or_insert(0) += 4096;
         }
         if from_main || start_root {
             if pc == 0xC022_8680 && cpu.r[0] == 0xA && !service10_done {
@@ -277,6 +278,19 @@ fn main() {
             if out_iters > 8 { cpu.r[4] = cpu.r[6]; }
         }
         // (r6=0) и переходим на нормальный выход форматтера.
+        // Повреждённый указатель функции вывода в	ctxе: возврат на эпилог
+        if from_main && (0xC9AF_D000..0xC9AF_D900).contains(&pc) && (cpu.cpsr & 0x20) == 0 {
+            cpu.cpsr |= 0x20;
+            cpu.r[15] = 0xC046_B85C;
+        }
+        // Функциональный указатель уводит в данные вместо кода:
+        // Immediate return из callback по LR с восстановлением состояния.
+        if from_main && ((0x2029_0000..=0x2029_FFFF).contains(&pc)
+            || (0xBE50_0000..=0xBE50_FFFF).contains(&pc)) {
+            let lr = cpu.r[14];
+            if lr & 1 != 0 { cpu.cpsr |= 0x20; cpu.r[15] = lr & !1; }
+            else { cpu.cpsr &= !0x20; cpu.r[15] = lr & !3; }
+        }
         // Log_Printf: источник символов застрял
         if from_main && pc == 0xC046_B534 { fmt_iters = 0; fmt_bailed = false; }
         if from_main && pc == 0xC046_B548 && !fmt_bailed {
@@ -298,7 +312,6 @@ fn main() {
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
-        if i == 1_000_000 { cpu.mem.io_seen.clear(); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
             irq_injected = true;
             cpu.mem.set_mmio(0x7000_102C, 1);
