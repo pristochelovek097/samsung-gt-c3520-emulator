@@ -30,8 +30,8 @@ public class Memory {
 
     private int flatOff(int addr) { return addr & 0x01FFFFFF; }
 
-    private boolean flashLocked;
-    public void lockFlash() { flashLocked = true; }
+    // Весь диапазон 0xC0000000..0xC3FFFFFF — физическая SDRAM, читаемо-пишущая.
+    public void lockFlash() { }
 
     public void setMMIO(int addr, int value) { mmio.put(addr & ~3, value); }
 
@@ -70,7 +70,6 @@ public class Memory {
     }
 
     public void write32(int addr, int value) {
-        if (flashLocked && ((addr & 0xFE000000) == FLASH_BASE)) return;
         int a = addr & ~3;
         byte[] f = flat(a);
         if (f != null) {
@@ -100,7 +99,6 @@ public class Memory {
     }
 
     public void write16(int addr, int value) {
-        if (flashLocked && ((addr & 0xFE000000) == FLASH_BASE)) return;
         int a = addr & ~1;
         byte[] f = flat(a);
         if (f != null) {
@@ -120,7 +118,6 @@ public class Memory {
     }
 
     public void write8(int addr, int value) {
-        if (flashLocked && ((addr & 0xFE000000) == FLASH_BASE)) return; // NOR flash read-only
         byte[] f = flat(addr);
         if (f != null) { f[flatOff(addr)] = (byte) value; return; }
         byte[] p = page(addr, true);

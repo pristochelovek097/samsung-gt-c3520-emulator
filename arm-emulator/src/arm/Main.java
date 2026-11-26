@@ -295,6 +295,13 @@ public final class Main {
             }
         }
         if (fromMain) System.out.println("[IRQOPEN] steps=" + irqOpenSteps);
+        if (startRoot || fromMain) {
+            System.out.print("[TAB40]");
+            int tab = mem.read32(0xca2ccabc == 0 ? 0 : 0); // placeholder
+            int base = 0xca2ccabc;
+            for (int k = 0; k < 5; k++) System.out.printf(" %08x", mem.read32(base + k*0x14 + 4));
+            System.out.println();
+        }
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
 }
