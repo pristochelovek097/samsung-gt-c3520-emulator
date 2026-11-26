@@ -327,6 +327,7 @@ public final class Main {
             rb.append(String.format(" cpsr=%08x", cpu.cpsr));
             ring[ringN++ % ring.length] = rb.toString();
             }
+                System.out.printf("[REG] step=%d r0=%08x r1=%08x lr=%08x%n", cpu.instructions, cpu.r[0], cpu.r[1], cpu.r[14]);
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
