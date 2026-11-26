@@ -87,9 +87,13 @@ public final class Main {
             mem.write8(0x3001d270, 0xFF);   // "последний обслуженный IRQ" — не совпадает с новым
         });
 
+        boolean fromMain = false;
+        for (String a : args) if ("--from-main".equals(a)) fromMain = true;
         boolean fromSnap = false;
         for (String a : args) if ("--from-snap".equals(a)) fromSnap = true;
         boolean snapped = false;
+        boolean mainSaved = false;
+        int dbgFirst = 0;
         final LcdController lcd = new LcdController();
         final EmulatorWindow window = gui ? new EmulatorWindow(lcd) : null;
         if (window != null) lcd.testPattern();
@@ -97,6 +101,22 @@ public final class Main {
         ARM cpu = new ARM(mem);
         if (noFast) cpu.fastPaths = false;
         cpu.irqLimit = 0;   // только таймерные IRQ, никакой слепой инъекции на wait-циклах
+        if (fromMain) {
+            try {
+                String[] ln = java.nio.file.Files.readAllLines(java.nio.file.Paths.get("/tmp/opencode/ref_main_entry.bin")).toArray(new String[0]);
+                for (int k = 0; k < 16; k++) cpu.r[k] = (int) Long.parseUnsignedLong(ln[k].trim(),16);
+                cpu.cpsr = (int) Long.parseUnsignedLong(ln[16].trim(),16);
+                for (int k = 0; k < 16; k++) cpu.cp15[k] = (int) Long.parseUnsignedLong(ln[17+k].trim(),16);
+                int[][] rg = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
+                              {0xc2000000,0xc4000000},{0xc99a0000,0xc9a00000},{0x30000000,0x30020000},
+                              {0x70000000,0x70020000},{0x74000000,0x74020000},{0x7d800000,0x7d820000}};
+                for (int[] r2 : rg) {
+                    byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+                        String.format("/tmp/opencode/ref_main_%08x.bin", r2[0])));
+                    mem.load(blob, 0, blob.length, r2[0]);
+                }
+            } catch (Exception e) { System.out.println("[MAIN] load failed " + e); }
+        }
         if (fromSnap) {
             try {
                 String[] lines = java.nio.file.Files.readAllLines(java.nio.file.Paths.get("/tmp/opencode/ref_entry_4a0.bin")).toArray(new String[0]);
@@ -144,7 +164,7 @@ public final class Main {
         System.out.println("ARM9 emulator — C3520 bootloader");
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
-        for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(a.substring(0, 0) + "/tmp/opencode/java_trace.txt");
+        for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         java.util.HashMap<Integer,Integer> pcHist = new java.util.HashMap<>();
         for (int i = 0; i < steps && !cpu.halted; i++) {
             if (startRoot) { int k = cpu.r[15] & 0xFFFFFFFE; pcHist.merge(k, 1, Integer::sum); }
@@ -181,6 +201,29 @@ public final class Main {
                 mem.setMMIO(0x7000102c, 1);
                 cpu.injectIRQ();
             }
+            if (startRoot && cpu.r[15] == 0xc00588b8 && !mainSaved) {
+                mainSaved = true;
+                try {
+                    StringBuilder sb = new StringBuilder();
+                    for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.r[k]));
+                    sb.append(String.format("%08x%n", cpu.cpsr));
+                    for (int k = 0; k < 16; k++) sb.append(String.format("%08x%n", cpu.cp15[k]));
+                    java.nio.file.Path rp = java.nio.file.Paths.get("/tmp/opencode/ref_main_entry.bin");
+                    if (!java.nio.file.Files.exists(rp)) java.nio.file.Files.write(rp, sb.toString().getBytes());
+                    int[][] rg2 = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
+                                   {0xc2000000,0xc4000000},{0xc99a0000,0xc9a00000},{0x30000000,0x30020000},
+                                   {0x70000000,0x70020000},{0x74000000,0x74020000},{0x7d800000,0x7d820000}};
+                    for (int[] r2 : rg2) {
+                        byte[] blob = new byte[r2[1]-r2[0]];
+                        for (int a = r2[0]; a < r2[1]; a++) blob[a-r2[0]] = (byte) mem.read8(a);
+                        java.nio.file.Path p2 = java.nio.file.Paths.get(String.format("/tmp/opencode/ref_main_%08x.bin", r2[0]));
+                        if (!java.nio.file.Files.exists(p2)) java.nio.file.Files.write(p2, blob);
+                    }
+                    System.out.println("[MAINSNAP] saved");
+                } catch (Exception e) { System.out.println("[MAINSNAP] " + e); }
+            }
+            if (startRoot && cpu.r[15] >= 0xc0020000 && cpu.r[15] < 0xc2000000 && dbgFirst++ < 12)
+                System.out.printf("[FIRST] %08x cpsr=%08x%n", cpu.r[15], cpu.cpsr);
             if (tracer != null) tracer.notePC(cpu.r[15]);
             if (addrIsLcd(cpu.r[15])) lcd.write(cpu.r[15], mem.read32(cpu.r[15]));
             cpu.step(trace);
