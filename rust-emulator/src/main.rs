@@ -133,7 +133,7 @@ fn main() {
     mem.write32(0xC99A_0C68, 0xC046_B861);
 
     mem.write16(0xC1B5_1BEC, 0x0090);
-    for k in 0..40u32 { mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); mem.write32(0xC1C7_6BE4 + k*8, 1); }
+    for k in 0..0x90u32 { mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); mem.write32(0xC1C7_6BE4 + k*8, 1); }
     mem.write32(0xC1AB_0000, 0xC1AB_0200);
     for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
     mem.write32(0xC1F2_A254, 0xC1AB_0000);
@@ -192,6 +192,11 @@ fn main() {
         if from_main || start_root {
             if pc == 0xC022_8680 && cpu.r[0] == 0xA && !service10_done {
                 service10_done = true;
+                cpu.mem.write32(0xC1AB_0100, 0xC0D4_CDCC);
+                cpu.mem.write32(0xC1AB_0000, 0xC1AB_0100);
+                cpu.mem.write8(0xC1AB_0008, 1);
+                cpu.mem.write32(0xC1AB_0010, 0xC1AB_0000);
+                cpu.mem.write32(0xC1C7_6C30, 0xC1AB_0010);
                 if !quiet { println!("[SERVICE10] step={}", cpu.instructions); }
             }
             if cpu.instructions == 1000 && !bootmode_done {
@@ -203,10 +208,7 @@ fn main() {
                 cpu.r[15] = 0xC035_CC06;
             }
         }
-        if from_main && (473_600..473_840).contains(&i) {
-            println!("[W] {} pc={:08x} ins={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r4={:08x} r5={:08x} r6={:08x} lr={:08x}",
-                i, pc, cpu.mem.read32(pc&!3), cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[4], cpu.r[5], cpu.r[6], cpu.r[14]);
-        }
+        if from_main && pc == 0xC043_3714 { cpu.mem.write16(0xC1B5_1BEC, 0x0090); }
         cpu.step(!quiet && i < 60);
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
