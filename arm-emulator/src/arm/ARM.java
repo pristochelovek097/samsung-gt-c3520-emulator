@@ -77,7 +77,9 @@ public final class ARM {
         banked[old][0] = r[13];
         banked[old][1] = r[14];
         if (oldMode == 0x11) for (int k = 0; k < 5; k++) fiq[k] = r[8 + k];
-        cpsr = (cpsr & 0xFFFFFF00) | (newMode & 0xFF);
+        // ARM926EJ-S: валидная маска CPSR 0xF80000FF (NZCV,Q,I,F,T,M[4:0]).
+        // Биты 23..8 зарезервированы и обязаны быть нулями.
+        cpsr = (cpsr & 0xF80000E0) | (newMode & 0x1F);
         int nw = bankIndex(newMode);
         r[13] = banked[nw][0];
         r[14] = banked[nw][1];
@@ -440,7 +442,7 @@ public final class ARM {
             if (s) setNZ(res);
             writeReg(rd, res);
             if (rd == 15 && s) {
-                cpsr = spsr;
+                cpsr = spsr & 0xF80000FF;
                 if ((cpsr & 0x20) != 0) r[15] &= ~1; else r[15] &= 0xFFFFFFFC;
             }
             return;
@@ -509,7 +511,7 @@ public final class ARM {
                     } else wr32(a, r[i]);
                     a += 4;
                 }
-                if (l && restoreSpsr) cpsr = spsr;
+                if (l && restoreSpsr) cpsr = spsr & 0xF80000FF;
                 if (w) writeReg(rn, u ? base + 4 * n : base - 4 * n);
                 return;
             }
