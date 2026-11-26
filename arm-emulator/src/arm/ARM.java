@@ -382,7 +382,7 @@ public final class ARM {
             switchMode(readReg(insn & 0xF));
             return;
         }
-        if ((insn & 0x0F000000) == 0x0E000000) { // MCR / MRC (копроцессор)
+        if ((insn & 0x0F000000) == 0x0E000000 && ((insn >>> 8) & 0xF) == 0xF) { // MCR/MRC CP15
             int crn = (insn >>> 16) & 0xF;              // CRn: биты 19-16
             int rd = (insn >>> 12) & 0xF;               // Rd: биты 15-12
             if (bit(insn, 20)) r[rd] = cp15[crn];       // MRC
@@ -507,6 +507,8 @@ public final class ARM {
             return;
         }
 
+        // Копроцессорные команды к отсутствующим CP — no-op (ARMv5eterminate).
+        if ((insn & 0x0E000000) == 0x0C000000 || (insn & 0x0F000000) == 0x0F000000) return;
         // Неизвестные ARM-опкоды НЕ должны молча игнорироваться — это маскирует баги декодера.
         halted = true;
         haltReason = "Unhandled ARM opcode 0x" + Integer.toHexString(insn) + " at 0x" + Integer.toHexString(addr);
