@@ -199,6 +199,9 @@ fn main() {
     let mut bootmode_done = false;
     let mut skip_count = 0u32;
     let mut irq_injected = false;
+    let mut fmt_iters = 0u32;
+    let mut fmt_bailed = false;
+    let mut out_iters = 0u32;
     let mut re_count = 0u32;
     let mut dbg_once = false;
     let mut saw_os_init = false;
@@ -268,10 +271,33 @@ fn main() {
                 cpu.mem.write8(0xC1D5_1000 + k*0x40, k);
             }
         }
+        if from_main && pc == 0xC046_B842 { out_iters = 0; }
+        if from_main && pc == 0xC046_B84A {
+            out_iters += 1;
+            if out_iters > 8 { cpu.r[4] = cpu.r[6]; }
+        }
+        // (r6=0) и переходим на нормальный выход форматтера.
+        // Log_Printf: источник символов застрял
+        if from_main && pc == 0xC046_B534 { fmt_iters = 0; fmt_bailed = false; }
+        if from_main && pc == 0xC046_B548 && !fmt_bailed {
+            fmt_iters += 1;
+            if fmt_iters > 2 {
+                fmt_bailed = true;
+                cpu.r[6] = 0;
+                cpu.r[15] = 0xC046_B560;
+                println!("[FMTBAIL] step={} lr={:08x} iters={}", i, cpu.r[14], fmt_iters);
+            }
+        }
+        // Повреждённый указатель функции вывода в	ctxе:.return по эпилогу
+        if from_main && (0xC9AF_D000..0xC9AF_D900).contains(&pc) && (cpu.cpsr & 0x20) == 0 {
+            cpu.cpsr |= 0x20;
+            cpu.r[15] = 0xC046_B85C;
+            println!("[FMTOUT] step={} pc={:08x}", i, pc);
+        }
         cpu.step(!quiet && i < 60);
+        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
-        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if i == 1_000_000 { cpu.mem.io_seen.clear(); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
             irq_injected = true;
@@ -314,6 +340,12 @@ fn main() {
         v.into_iter().take(15).map(|(pc, n)| format!("{:08x}:{}", pc, n)).collect()
     };
     println!("[HOTPC] {}", top.join(" "));
+    if from_main {
+        let p = cpu.va2pa(0x0001_0180);
+        print!("[IRQTABLE] va=00010180 pa={:08x}", p);
+        for k in 0..16u32 { print!(" {:08x}", cpu.mem.read32(p + k*4)); }
+        println!();
+    }
 
     if trace_io {
         let mut keys: Vec<u32> = cpu.mem.io_seen.keys().copied().collect();
