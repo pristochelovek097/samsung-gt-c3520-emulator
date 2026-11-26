@@ -137,6 +137,21 @@ fn main() {
     mem.write32(0xC1AB_0000, 0xC1AB_0200);
     for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
     mem.write32(0xC1F2_A254, 0xC1AB_0000);
+    // Сервис №10: [[entry]] == 0xC0D4CDCC, [entry+8] == 1
+    mem.write32(0xC1D5_0000, 0xC9D5_0040);
+    mem.write8(0xC1D5_0008, 1);
+    mem.write32(0xC1D5_0040, 0xC0D4_CDCC);
+    // Остальные сервисы: [entry] = obj, [entry+4]=1, байт obj+20 == 1
+    mem.write32(0xC1D5_0100, 0xC9D5_0200);
+    mem.write8(0xC1D5_0104, 1);
+    mem.write8(0xC1D5_0214, 1);
+    mem.write32(0xC1D5_0200, 0xC9D5_0300);
+    for k in 0..0x90u32 {
+        let e = if k == 0xA { 0xC9D5_0000u32 } else { 0xC9D5_0100u32 };
+        mem.write32(0xC1C7_6BE0 + k*8, e);
+        mem.write32(0xC1C7_6BE4 + k*8, 1);
+    }
+    mem.write32(0xC1F2_A254, 0xC9D5_0100);
     let mut cpu = Arm::new(&mut mem);
     cpu.trace_all = trace_all;
     cpu.irq_limit = 0;
