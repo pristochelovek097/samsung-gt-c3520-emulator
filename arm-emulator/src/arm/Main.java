@@ -352,7 +352,6 @@ public final class Main {
                 mem.write32(0xc1ca0178, 0x20000000);
                 System.out.printf("[BOOTMODE] step=%d val=%08x%n", cpu.instructions, mem.read32(0xc1ca0178));
             }
-            }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
