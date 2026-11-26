@@ -25,7 +25,8 @@ cargo build --release
 
 ## Реализовано (1-в-1 с Java-портом)
 
-- `arm.rs`: все 7 режимов, banked SP/LR, FIQ r8-r12, CPSR-маска
+- `arm.rs`: direct-mapped TLB (256 записей, 4 КБ) + PC/инструкции-кэш,
+  hot-loop fast-path; все 7 режимов, banked SP/LR, FIQ r8-r12, CPSR-маска
   `0xF80000FF`, `thumbBlPending` (исправление сиротской половины BL/BLX),
   CLZ/QADD/QSUB/SMUL/SMLA, MRC/MCR CP15 с раздельными `itcmReg`/`dtcmReg`
   (c9,c1,1 / c9,c1,0), WFI (c7,c0,4 — счётчик), Data/Prefetch Abort
@@ -45,5 +46,7 @@ cargo build --release
 
 - `--start-root`: `commands=3`, `pixels=76800`, PNG `/tmp/opencode/bootscreen.png`;
 - `--from-main` 40 000 шагов: `39/40` живых указателей в `0xCA2CCABC`;
-- 200 000 000 шагов в `--release`: ~30 MIPS на тестовой машине,
-  `halted=false`, `39/40`, `I=1` (PowerOff-ветка ещё не пробита).
+- 200 000 000 шагов в `--release`: ~88 MIPS на тестовой машине,
+  `halted=false`, `39/40`, `I=1` (PowerOff-ветка ещё не пробита),
+  `WFI=0`, `[MMIO]` после 1M пуст — ОС крутится в self-loop `0xC03E0114`.
+  С `--skip-log` доходит до диспетчера `0xC0460FF8` на шаге 33074.

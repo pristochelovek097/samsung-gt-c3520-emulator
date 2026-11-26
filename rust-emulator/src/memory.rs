@@ -70,7 +70,11 @@ impl Memory {
             self.io_seen.entry(addr & !3).or_insert((1, 0)).0 += 1;
             return self.nand.read(addr);
         }
-        if let Some(v) = self.mmio.get(&(addr & !3)) { return *v; }
+        if (addr >= 0x7000_0000 && addr < 0x7002_0000)
+            || (addr >= 0x7800_0000 && addr < 0x7802_0000)
+            || (addr >= 0x2FFE_0000 && addr < 0x3000_0000) {
+            if let Some(v) = self.mmio.get(&(addr & !3)) { return *v; }
+        }
         let a = addr & !3;
         if let Some((bank, o)) = self.flat_idx(a) {
             let s = match bank { 0 => &self.itcm, 1 => &self.dram, _ => &self.sram };

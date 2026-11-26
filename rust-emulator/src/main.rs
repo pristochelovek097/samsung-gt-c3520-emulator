@@ -170,13 +170,16 @@ fn main() {
     let mut service10_done = false;
     let mut bootmode_done = false;
     let mut skip_count = 0u32;
+    let mut irq_injected = false;
+    let mut saw_os_init = false;
+    let mut saw_dispatch = false;
     let t0 = Instant::now();
 
     for i in 0..steps {
         if cpu.halted { break; }
         let pc = cpu.r[15];
-        if start_root || from_main {
-            *hist.entry(pc & !1).or_insert(0) += 1;
+        if (start_root || from_main) && (i & 63) == 0 {
+            *hist.entry(pc & !1).or_insert(0) += 64;
         }
         if from_main || start_root {
             if pc == 0xC022_8680 && cpu.r[0] == 0xA && !service10_done {
@@ -198,6 +201,15 @@ fn main() {
             }
         }
         cpu.step(!quiet && i < 60);
+        if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
+        if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
+        if i == 1_000_000 { cpu.mem.io_seen.clear(); }
+        if !irq_injected && (cpu.cpsr & 0x80) == 0 {
+            irq_injected = true;
+            cpu.mem.set_mmio(0x7000_102C, 1);
+            cpu.inject_irq();
+            println!("[IRQINJECT] step={} lr={:08x}", cpu.instructions, cpu.r[14]);
+        }
         if gui && i % 2000 == 0 && i > 0 {
             // в Rust-порту GUI сохраняет кадр; живое окно опционально
         }
@@ -220,7 +232,8 @@ fn main() {
     println!("[TAB40] va=ca2ccabc pa={:08x} live={}/40", pa, live);
     println!("[LCD] commands={} pixels={} frames={}", cpu.mem.lcd.commands,
              cpu.mem.lcd.pixels, cpu.mem.lcd.frames);
-    println!("[IRQOPEN] steps={} halted={} reason={}", cpu.irq_open_steps, cpu.halted, cpu.halt_reason);
+    println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
+             cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);
     println!("[WFI] count={} data_abort={} prefetch_abort={}", cpu.wfi_count,
              cpu.data_aborts, cpu.prefetch_aborts);
     println!("[MIPS] {:.2} million instr/sec ({} instr in {:.3}s)", mips, cpu.instructions, elapsed);

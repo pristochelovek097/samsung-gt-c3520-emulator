@@ -35,6 +35,8 @@ pub struct Arm<'a> {
     tlb_va_tag: i64,
     tlb_pa_base: u32,
     tlb_mask: u32,
+    tlb_cache: Vec<(u32, u32)>, // direct-mapped, 256 entries, tag = va & !0xFFF
+    fetch_pc: u32, fetch_pa: u32, fetch_insn: u32,
 }
 
 impl<'a> Arm<'a> {
@@ -47,6 +49,8 @@ impl<'a> Arm<'a> {
             trace_all: false, wfi_count: 0, irq_open_steps: 0, data_aborts: 0,
             prefetch_aborts: 0, strict_aborts: false, after_zero_fill: false,
             tlb_va_tag: -1, tlb_pa_base: 0, tlb_mask: 0xFFF,
+            tlb_cache: vec![(0xFFFF_FFFF, 0); 256],
+            fetch_pc: 0xFFFF_FFFF, fetch_pa: 0, fetch_insn: 0,
         };
         a.r[13] = 0x4000_1000;
         a.banked[1][0] = 0x4000_0E00;
@@ -144,13 +148,21 @@ impl<'a> Arm<'a> {
             if va >= base && va < base.wrapping_add(size) { return va; }
         }
         if !bit(self.cp15[1], 0) { return va; }
+        let tag = va & !0xFFF;
+        let idx = ((va >> 12) & 0xFF) as usize;
+        let (ctag, cpa) = self.tlb_cache[idx];
+        if ctag == tag { return cpa | (va & 0xFFF); }
         if (va as i64 & !(self.tlb_mask as i64)) == self.tlb_va_tag {
             return self.tlb_pa_base | (va & self.tlb_mask);
         }
         let ttbr = self.cp15[2] & 0xFFFF_C000;
         let l1 = self.mem.read32(ttbr.wrapping_add((va >> 20) << 2));
         let typ = l1 & 3;
-        if typ == 2 { return (l1 & 0xFFF0_0000) | (va & 0x000F_FFFF); }
+        if typ == 2 {
+            let pa = (l1 & 0xFFF0_0000) | (va & 0x000F_FFFF);
+            self.tlb_cache[idx] = (tag, pa & !0xFFF);
+            return pa;
+        }
         if typ == 1 {
             let l2base = l1 & 0xFFFF_F000;
             let l2 = self.mem.read32(l2base.wrapping_add(((va >> 12) & 0xFF) << 2));
@@ -159,12 +171,14 @@ impl<'a> Arm<'a> {
                 self.tlb_va_tag = (va & !0xFFF) as i64;
                 self.tlb_pa_base = l2 & 0xFFFF_F000;
                 self.tlb_mask = 0xFFF;
+                self.tlb_cache[idx] = (tag, self.tlb_pa_base);
                 return self.tlb_pa_base | (va & 0xFFF);
             }
             if t == 1 {
                 self.tlb_va_tag = (va & !0xFFFF) as i64;
                 self.tlb_pa_base = l2 & 0xFFFF_0000;
                 self.tlb_mask = 0xFFFF;
+                self.tlb_cache[idx] = (tag, self.tlb_pa_base | (va & 0xF000));
                 return self.tlb_pa_base | (va & 0xFFFF);
             }
         }
@@ -182,6 +196,12 @@ impl<'a> Arm<'a> {
     #[inline] fn wr32(&mut self, a: u32, v: u32) {
         let w = if a & 3 == 0 { v } else { v.rotate_left((a & 3) * 8) };
         let pa = self.translate(a & !3);
+        let tt = self.cp15[2] & 0xFFFF_C000;
+        if pa >= tt && pa < tt.wrapping_add(0x1_0000) {
+            for e in self.tlb_cache.iter_mut() { *e = (0xFFFF_FFFF, 0); }
+            self.tlb_va_tag = -1;
+        }
+        if pa == self.fetch_pa { self.fetch_pc = 0xFFFF_FFFF; }
         self.mem.write32(pa, w);
     }
     #[inline] fn rd16(&mut self, a: u32) -> u32 { let pa = self.translate(a); self.mem.read16(pa) }
@@ -283,11 +303,17 @@ impl<'a> Arm<'a> {
         self.shift(value, (insn >> 5) & 3, amount)
     }
 
+    pub fn inject_irq(&mut self) { if !self.halted { let pc = self.r[15]; self.raise_irq(pc); } }
+
     pub fn step(&mut self, trace: bool) {
         if self.halted { return; }
         if bit(self.cpsr, 5) { self.step_thumb(trace); return; }
         let addr = self.r[15];
-        let insn = self.rd32(addr);
+        let insn = if self.fetch_pc == addr { self.fetch_insn } else {
+            let v = self.rd32(addr);
+            self.fetch_pc = addr; self.fetch_pa = self.translate(addr & !3); self.fetch_insn = v;
+            v
+        };
         if insn == 0 { self.zero_run += 1; if self.zero_run > 500 {
             self.halted = true; self.halt_reason = format!("unmapped memory at {:08x}", addr);
         } } else { self.zero_run = 0; }
@@ -298,6 +324,8 @@ impl<'a> Arm<'a> {
         if insn == 0xEAFF_FFFE && (self.cpsr & 0x1F) != 0x12 && self.irq_count < self.irq_limit {
             self.raise_irq(addr.wrapping_add(4)); return;
         }
+        // self-loop с закрытыми прерываниями: состояние не меняется (горячий путь)
+        if insn == 0xEAFF_FFFE && bit(self.cpsr, 7) { self.r[15] = addr; return; }
         let is_blx_imm = (insn & 0xFE00_0000) == 0xFA00_0000;
         if !is_blx_imm && !self.cond(insn >> 28) { return; }
         if addr == 0x660 && self.after_zero_fill { self.after_zero_fill = false; }
@@ -365,7 +393,10 @@ impl<'a> Arm<'a> {
                 if crn == 7 && crm == 0 && opc2 == 4 {
                     self.wfi_count += 1;
                 }
-                if matches!(crn, 1 | 2 | 3 | 7 | 8) { self.tlb_va_tag = -1; }
+                if matches!(crn, 1 | 2 | 3 | 7 | 8) {
+                    self.tlb_va_tag = -1;
+                    for e in self.tlb_cache.iter_mut() { *e = (0xFFFF_FFFF, 0); }
+                }
             }
             return;
         }
@@ -512,6 +543,7 @@ impl<'a> Arm<'a> {
         if trace && (self.trace_all || self.instructions <= 60) {
             println!("{:08x}: {:04x} (T)", addr, insn);
         }
+        if insn == 0xE7FE && bit(self.cpsr, 7) { self.r[15] = addr; return; }
 
         if (self.cpsr & 0x1F) != 0x12 && (insn & 0xF800) == 0xE000 {
             let mut off = (insn & 0x7FF) << 1;
