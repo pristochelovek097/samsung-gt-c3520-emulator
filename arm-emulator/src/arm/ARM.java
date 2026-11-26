@@ -84,8 +84,7 @@ public final class ARM {
 
     private int translate(int va) {
         if ((cp15[1] & 1) == 0) return va;         // MMU выключен
-        int tag = va & 0xFFFFF000;
-        if (tag == tlbVaTag) return tlbPaBase | (va & tlbMask);
+        if ((va & ~tlbMask) == tlbVaTag) return tlbPaBase | (va & tlbMask);
         int ttbr = cp15[2] & 0xFFFFC000;
         int l1 = mem.read32(ttbr + ((va >>> 20) << 2));
         int type = l1 & 3;
@@ -94,8 +93,8 @@ public final class ARM {
             int l2base = l1 & 0xFFFFF000;
             int l2 = mem.read32(l2base + (((va >>> 12) & 0xFF) << 2));
             int t = l2 & 3;
-            if (t == 2) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFFF000; tlbMask = 0xFFF; return tlbPaBase | (va & 0xFFF); }
-            if (t == 1) { tlbVaTag = tag; tlbPaBase = l2 & 0xFFFF0000; tlbMask = 0xFFFF; return tlbPaBase | (va & 0xFFFF); }
+            if (t == 2) { tlbVaTag = va & ~0xFFF; tlbPaBase = l2 & 0xFFFFF000; tlbMask = 0xFFF; return tlbPaBase | (va & 0xFFF); }
+            if (t == 1) { tlbVaTag = va & ~0xFFFF; tlbPaBase = l2 & 0xFFFF0000; tlbMask = 0xFFFF; return tlbPaBase | (va & 0xFFFF); }
         }
         return va;                                                   // fallback: identity
     }
@@ -639,7 +638,10 @@ public final class ARM {
                 && (insn & 0xFF00) != 0xB000) { // ADD Rd,SP/PC,#imm (0xB0xx — это SUB/ADD SP)
             rd = (insn >>> 8) & 7;
             imm = (insn & 0xFF) << 2;
-            r[rd] = readReg(((insn >>> 11) & 1) == 0 ? 13 : 15) + imm;
+            // bit11=0: ADD Rd,PC,#imm ; bit11=1: ADD Rd,SP,#imm
+            int baseReg = ((insn & 0x0800) != 0) ? 13 : 15;
+            int base = baseReg == 15 ? (addr + 4) & ~3 : readReg(13);
+            r[rd] = base + imm;
             return;
         }
         if ((insn & 0xFF00) == 0xB000) {

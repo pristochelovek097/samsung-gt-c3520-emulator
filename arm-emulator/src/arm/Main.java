@@ -108,7 +108,7 @@ public final class Main {
                 cpu.cpsr = (int) Long.parseUnsignedLong(ln[16].trim(),16);
                 for (int k = 0; k < 16; k++) cpu.cp15[k] = (int) Long.parseUnsignedLong(ln[17+k].trim(),16);
                 int[][] rg = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
-                              {0xc2000000,0xc4000000},{0xc99a0000,0xc9a00000},{0x30000000,0x30020000},
+                              {0xc2000000,0xc4000000},{0xc9900000,0xc9c00000},{0x30000000,0x30020000},
                               {0x70000000,0x70020000},{0x74000000,0x74020000},{0x7d800000,0x7d820000}};
                 for (int[] r2 : rg) {
                     byte[] blob = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
@@ -211,7 +211,7 @@ public final class Main {
                     java.nio.file.Path rp = java.nio.file.Paths.get("/tmp/opencode/ref_main_entry.bin");
                     if (!java.nio.file.Files.exists(rp)) java.nio.file.Files.write(rp, sb.toString().getBytes());
                     int[][] rg2 = {{0x0,0x10000},{0xc0000000,0xc0020000},{0xc0020000,0xc2000000},
-                                   {0xc2000000,0xc4000000},{0xc99a0000,0xc9a00000},{0x30000000,0x30020000},
+                                   {0xc2000000,0xc4000000},{0xc9900000,0xc9c00000},{0x30000000,0x30020000},
                                    {0x70000000,0x70020000},{0x74000000,0x74020000},{0x7d800000,0x7d820000}};
                     for (int[] r2 : rg2) {
                         byte[] blob = new byte[r2[1]-r2[0]];
