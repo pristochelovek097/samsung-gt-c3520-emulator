@@ -138,6 +138,18 @@ fn main() {
     mem.write32(0xC1F2_A254, 0xC1AB_0000);
     mem.write32(0xC99A_0C68, 0xC046_B861);
 
+    // Повторно выставляем служебные ячейки ПОСЛЕ загрузки снапшота
+    // (load_ranges перезаписывает 0xC2000000..0xC4000000 нулями образа).
+    mem.write16(0xC1B5_1BEC, 0x0090);
+    for k in 0..40u32 {
+        mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000);
+        mem.write32(0xC1C7_6BE4 + k*8, 1);
+    }
+    mem.write32(0xC1AB_0000, 0xC1AB_0200);
+    for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
+    mem.write32(0xC1F2_A254, 0xC1AB_0000);
+    mem.write32(0xC1AB_0100, 0xC0D4_CDCC);
+    mem.write8(0xC1AB_0008, 1);
     let mut cpu = Arm::new(&mut mem);
     cpu.trace_all = trace_all;
     cpu.irq_limit = 0;
