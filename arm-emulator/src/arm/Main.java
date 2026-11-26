@@ -229,8 +229,6 @@ public final class Main {
         int dbgX = 0;
         boolean[] dbgSrv = new boolean[1];
         boolean[] dbgBm = new boolean[1];
-        boolean[] dbgVa = new boolean[1];
-        boolean[] dbgR6 = new boolean[1];
         boolean[] dbgF = new boolean[1];
         boolean[] dbgShut = new boolean[1];
         long irqOpenSteps = 0;
@@ -349,7 +347,6 @@ public final class Main {
                 mem.write32(0xc1ca0178, 0x20000000);
                 System.out.printf("[BOOTMODE] step=%d val=%08x%n", cpu.instructions, mem.read32(0xc1ca0178));
             }
-            if (fromMain && cpu.instructions == 292580 && !dbgVa[0]) { dbgVa[0]=true; System.out.printf("[VAPA2] pa=%08x byte=%02x%n", cpu.va2pa(0xc9b51b40), mem.read8(0xc9b51b40)); }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }

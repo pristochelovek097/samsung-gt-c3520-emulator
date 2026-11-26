@@ -144,6 +144,7 @@ public class Memory {
     }
 
     public int read8(int addr) {
+        if (addr == 0xc1b51b40) return 2;   // статус 0xC9B51B40: устройство готово
         if (nand != null && ((addr ^ NandController.BASE) & ~0xFFFF) == 0) return nand.read(addr) & 0xFF;
         byte[] f = flat(addr);
         if (f != null) return f[flatOff(addr)] & 0xFF;
