@@ -222,6 +222,10 @@ public final class Main {
                 System.out.println("[BOOTSCREEN] failed: " + e);
             }
         }
+        // Boot-mode flags read by MAIN startup (0xC00585A4): normal boot.
+        mem.write32(0xc3fff15c, 1);
+        mem.setMMIO(0x7001b034, 0x80);
+        mem.write32(0xc1f2a254, 0xc1ab0000);
         System.out.println("ARM9 emulator — C3520 bootloader");
         System.out.println("reset vector: " + String.format("%08x", mem.read32(0)));
         java.io.PrintWriter regTrace = null;
@@ -330,7 +334,6 @@ public final class Main {
             rb.append(String.format(" cpsr=%08x", cpu.cpsr));
             ring[ringN++ % ring.length] = rb.toString();
             }
-                System.out.printf("[REG] step=%d r0=%08x r1=%08x lr=%08x%n", cpu.instructions, cpu.r[0], cpu.r[1], cpu.r[14]);
             // Прошивка запрашивает сервис №10 (0xC0411874) — подаём его
             // заводской дескриптор: obj -> vptr-значение 0xC0D4CDCC, byte+8=1.
             if ((startRoot || fromMain) && cpu.r[15] == 0xc0228680 && cpu.r[0] == 0xa && !dbgSrv[0]) {
