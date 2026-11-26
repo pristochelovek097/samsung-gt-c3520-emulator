@@ -1,0 +1,115 @@
+//! Виртуальный NAND-контроллер 0x7D800000 (карта .ptt), 1-в-1 порт NandController.java.
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+
+pub const BASE: u32 = 0x7D80_0000;
+
+pub struct NandController {
+    sparse: Vec<(u32, Vec<u8>)>,
+    fifo: [u8; 2048],
+    command: u32,
+    column: u32,
+    row: u32,
+    fifo_pos: usize,
+    status14: u32,
+}
+
+impl NandController {
+    pub fn new(dir: &str) -> Self {
+        let mut n = Self {
+            sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
+            column: 0, row: 0, fifo_pos: 0, status14: 3,
+        };
+        let bin = Path::new(dir).join("C3520XFLJ1_BIN");
+        n.add(0x000000, vec![0xFF; 0x20000]);
+        n.add(0x020000, load_cla(&bin, "C3520XELaFleur.bmp", 0x20000));
+        n.add(0x040000, load_raw(&bin, "C3520XELaFleur.bootlcdact", 0x20000));
+        n.add(0x060000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_CB_ROOT", 0x20000));
+        n.add(0x080000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_CB_MAIN", 0xC00000));
+        n.add(0xC80000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_NCB_DSP", 0x60000));
+        n.add(0xCE0000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_CB_PAGE1", 0x600000));
+        n.add(0x12E0000, load_cla(&bin, "C3520XELaFleur.cla/ER_RAM_CB", 0x40000));
+        n
+    }
+
+    fn add(&mut self, off: u32, data: Vec<u8>) { self.sparse.push((off, data)); }
+
+    pub fn load_decompressed(&mut self, off: u32, data: Vec<u8>) {
+        self.sparse.retain(|(o, _)| *o != off);
+        if !data.is_empty() { self.sparse.push((off, data)); }
+    }
+
+    fn read_image(&self, addr: u32) -> u8 {
+        for (o, b) in &self.sparse {
+            if addr >= *o {
+                let i = (addr - *o) as usize;
+                if i < b.len() { return b[i]; }
+            }
+        }
+        0xFF
+    }
+
+    fn latch(&mut self) {
+        let start = self.row.wrapping_mul(2048).wrapping_add(self.column);
+        for i in 0..2048 { self.fifo[i] = self.read_image(start.wrapping_add(i as u32)); }
+        self.fifo_pos = 0;
+    }
+
+    pub fn read(&mut self, addr: u32) -> u32 {
+        let off = addr.wrapping_sub(BASE);
+        if off > 0xFFFF { return 0; }
+        match off {
+            0x014 => self.status14,
+            0x0C0 => 0x16C9,
+            0x408 => 0xFFFF_FFFF,
+            0x100 => 0,
+            _ => {
+                if off >= 0x800 && off < 0x800 + 2048 {
+                    let v = self.fifo[self.fifo_pos & 2047] as u32;
+                    self.fifo_pos += 1;
+                    v
+                } else { 0 }
+            }
+        }
+    }
+
+    pub fn write(&mut self, addr: u32, value: u32) {
+        let off = addr.wrapping_sub(BASE);
+        if off > 0xFFFF { return; }
+        match off {
+            0x000 => self.command = value & 0xFF,
+            0x004 => { self.column = value & 0xFFF; self.fifo_pos = 0; }
+            0x008 => self.row = value & 0xFFFF,
+            0x00C => self.row |= (value & 0xFF) << 16,
+            0x010 => self.status14 = value & 3,
+            _ => {}
+        }
+        let v = value & 0xFF;
+        if v == 0x30 && self.command == 0x00 { self.latch(); }
+        if v == 0x00 { self.command = 0x00; self.fifo_pos = 0; }
+        if v == 0x90 { self.command = 0x90; }
+        if v == 0x70 { self.command = 0x70; }
+    }
+}
+
+fn fill(n: usize, v: u8) -> Vec<u8> { vec![v; n] }
+
+fn load_raw(dir: &Path, name: &str, cap: usize) -> Vec<u8> {
+    let mut b = fill(cap, 0xFF);
+    if let Ok(raw) = fs::read(dir.join(name)) {
+        let n = raw.len().min(cap);
+        b[..n].copy_from_slice(&raw[..n]);
+    }
+    b
+}
+
+fn load_cla(dir: &Path, name: &str, cap: usize) -> Vec<u8> {
+    let mut b = fill(cap, 0xFF);
+    if let Ok(raw) = fs::read(dir.join(name)) {
+        let off = if raw.len() > 0x2000 { 0x2000 } else { 0 };
+        let n = (raw.len() - off).min(cap);
+        b[..n].copy_from_slice(&raw[off..off + n]);
+    }
+    b
+}

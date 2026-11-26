@@ -234,6 +234,7 @@ public final class Main {
         for (String a : args) if ("--trace-regs".equals(a)) regTrace = new java.io.PrintWriter(fromMain ? "/tmp/opencode/java_main_trace.txt" : "/tmp/opencode/java_trace.txt");
         int dbgX = 0;
         boolean[] dbgSrv = new boolean[1];
+        int dbgZ = 0;
         boolean[] dbgBm = new boolean[1];
         boolean[] dbgF = new boolean[1];
         boolean[] dbgShut = new boolean[1];
@@ -352,6 +353,7 @@ public final class Main {
                 mem.write32(0xc1ca0178, 0x20000000);
                 System.out.printf("[BOOTMODE] step=%d val=%08x%n", cpu.instructions, mem.read32(0xc1ca0178));
             }
+            if (fromMain && cpu.r[15] == 0xc035cb60 && dbgZ++ < 3) { cpu.r[15] = 0xc035cc06; }
             cpu.step(trace);
             if (window != null && (i % 2000) == 0) window.update(cpu, 0);
         }
@@ -402,6 +404,7 @@ public final class Main {
             System.out.printf(" ... live=%d/40%n", nz);
         }
         System.out.printf("[LCD] commands=%d pixels=%d frames=%d%n", lcd.commands(), lcd.pixels(), lcd.frames());
+        if (tracer instanceof TraceMemory) ((TraceMemory) tracer).dumpIO();
         System.out.println("halted: " + cpu.halted + " " + cpu.haltReason);
     }
 }

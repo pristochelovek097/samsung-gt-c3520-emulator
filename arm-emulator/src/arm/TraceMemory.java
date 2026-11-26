@@ -13,6 +13,13 @@ public final class TraceMemory extends Memory {
     public boolean traceWindow;
     public long windowStep;
 
+    public void dumpIO() {
+        java.util.TreeSet<Integer> sorted = new java.util.TreeSet<>();
+        for (int a : ioSeen) if ((a & 0xFF000000) == 0x70000000 || (a & 0xFF000000) == 0x74000000
+                             || (a & 0xFF000000) == 0x78000000 || (a & 0xFF000000) == 0x7D000000) sorted.add(a);
+        for (int a : sorted) System.out.printf("[MMIO] %08x%n", a);
+    }
+
     private void io(int addr, String kind, int value) {
         int key = addr & ~3;
         if (!ioSeen.add(key)) return;
