@@ -208,7 +208,16 @@ fn main() {
                 cpu.r[15] = 0xC035_CC06;
             }
         }
-        if from_main && pc == 0xC043_3714 { cpu.mem.write16(0xC1B5_1BEC, 0x0090); }
+        if from_main && pc == 0xC043_3714 {
+            cpu.mem.write16(0xC1B5_1BEC, 0x0090);
+            for k in 0..0x90u32 { cpu.mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); cpu.mem.write32(0xC1C7_6BE4 + k*8, 1); }
+            cpu.mem.write32(0xC1AB_0000, 0xC1AB_0200);
+            cpu.mem.write8(0xC1AB_0214, 1);
+        }
+        if from_main && (473_840..473_900).contains(&i) {
+            println!("[W] {} pc={:08x} ins={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r4={:08x} r5={:08x} r6={:08x} lr={:08x}",
+                i, pc, cpu.mem.read32(pc&!3), cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[4], cpu.r[5], cpu.r[6], cpu.r[14]);
+        }
         cpu.step(!quiet && i < 60);
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
