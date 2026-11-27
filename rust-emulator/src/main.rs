@@ -216,6 +216,14 @@ fn main() {
     // 0xC042E14A; без него дmm1excp.c вызывается по кругу.
     cpu.mem.write8(0xC9AF_ED1A, 0xFF);
     cpu.mem.write8(0xC9B5_1B47, 0x20);
+    // Region$$Table ROOT 0x2C08: src=0xC0008D04, dst VA 0x00010000,
+    // dst_end=0x000108B8 → длина 0x8B8; PA-адрес 0x2FFE0000.
+    if let Ok(rootd) = fs::read("/tmp/opencode/dec/ER_FLASH_CB_ROOT.bin") {
+        let off = 0x8D04usize;
+        let n = 0x8B8usize.min(rootd.len().saturating_sub(off));
+        for k in 0..n { cpu.mem.write8(0x2FFE_0000u32.wrapping_add(k as u32), rootd[off+k] as u32); }
+        println!("[ITCMOVL] {} bytes", n);
+    }
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -317,18 +325,10 @@ fn main() {
         }
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
-        if from_main && pc == 0x0001_0180 { cpu.r[0] = 25; }
         // Периодический таймерный IRQ после 1M шагов (src0 → idx 0x40, безопасный).
         if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
             && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
-            cpu.mem.set_mmio(0x7000_102C, 1);
-            cpu.inject_irq();
-            timer_irqs += 1;
-        }
-        // Периодический таймерный IRQ после 1M шагов (src0).
-        if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
-            && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
-            cpu.mem.set_mmio(0x7000_102C, 1);
+            cpu.mem.set_mmio(0x7000_102C, 18);
             cpu.inject_irq();
             timer_irqs += 1;
         }

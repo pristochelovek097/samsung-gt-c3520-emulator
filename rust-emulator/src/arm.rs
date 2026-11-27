@@ -118,6 +118,16 @@ impl<'a> Arm<'a> {
         if new_mode & 0x1F == 0x11 { for k in 0..5 { self.r[8 + k] = self.fiq[k]; } }
     }
 
+    // MSR spsr_<fields>, Rs — писать в SPSR, НЕ в CPSR.
+    fn msr_spsr(&mut self, v: u32, mask: u32) {
+        let mut s = self.spsr;
+        if mask & 1 != 0 { s = (s & 0xFFFF_FF00) | (v & 0x0000_00FF); }
+        if mask & 2 != 0 { s = (s & 0xFFFF_00FF) | (v & 0x0000_FF00); }
+        if mask & 4 != 0 { s = (s & 0xFF00_FFFF) | (v & 0x00FF_0000); }
+        if mask & 8 != 0 { s = (s & 0x00FF_FFFF) | (v & 0xFF00_0000); }
+        self.spsr = s;
+    }
+
     // MSR cpsr_c: bil stays in the control field (I/F) must be writable.
     fn msr_control(&mut self, v: u32) {
         let old_mode = self.cpsr & 0x1F;
@@ -470,10 +480,31 @@ impl<'a> Arm<'a> {
             return;
         }
         if (insn & 0x0F00_0000) == 0x0F00_0000 { self.raise_svc(); return; }
+        // MRS Rd, CPSR / SPSR
         if (insn & 0x0FFF_0FFF) == 0x010F_0000 { self.r[((insn >> 12) & 0xF) as usize] = self.cpsr; return; }
+        if (insn & 0x0FFF_0FFF) == 0x014F_0000 { self.r[((insn >> 12) & 0xF) as usize] = self.spsr; return; }
+        // MSR (register) — бит 22 выбирает SPSR, биты 19:16 — маску полей.
         if (insn & 0x0FB0_FFF0) == 0x0120_F000 {
             let v = self.read_reg(insn & 0xF);
-            self.msr_control(v);
+            let mask = (insn >> 16) & 0xF;
+            if bit(insn, 22) {
+                self.msr_spsr(v, mask);
+            } else {
+                if mask & 1 != 0 { self.msr_control(v); }
+                if mask & 8 != 0 { self.cpsr = (self.cpsr & 0x0FFF_FFFF) | (v & 0xF000_0000); }
+            }
+            return;
+        }
+        // MSR (immediate)
+        if (insn & 0x0FB0_F000) == 0x0320_F000 {
+            let v = self.operand2(insn);
+            let mask = (insn >> 16) & 0xF;
+            if bit(insn, 22) {
+                self.msr_spsr(v, mask);
+            } else {
+                if mask & 1 != 0 { self.msr_control(v); }
+                if mask & 8 != 0 { self.cpsr = (self.cpsr & 0x0FFF_FFFF) | (v & 0xF000_0000); }
+            }
             return;
         }
         // MCR/MRC CP15
