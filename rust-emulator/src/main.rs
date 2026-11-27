@@ -198,7 +198,6 @@ fn main() {
     let mut hist: HashMap<u32, u64> = HashMap::new();
     let mut service10_done = false;
     let mut bootmode_done = false;
-    let mut skip_count = 0u32;
     let mut irq_injected = false;
     let mut sys_open_count = 0u64;
     let mut fmt_iters = 0u32;
@@ -225,6 +224,12 @@ fn main() {
         for k in 0..n { cpu.mem.write8(0x2FFE_0000u32.wrapping_add(k as u32), rootd[off+k] as u32); }
         println!("[ITCMOVL] {} bytes", n);
     }
+    // Инициализация контекста 0xCA7D9650 (как в 0xC0A67DB8): база кучи —
+    // свободный SDRAM выше .bss (~0xCA7E0000), зазор до стека 0x10000.
+    let p16 = cpu.va2pa(0xCA7D_9664); cpu.mem.write32(p16, 0xCA80_0000);
+    let p1c = cpu.va2pa(0xCA7D_966C); cpu.mem.write32(p1c, 0x0001_0000);
+    let p18 = cpu.va2pa(0xCA7D_9668); cpu.mem.write32(p18, 0x40);
+    let p10 = cpu.va2pa(0xCA7D_9660); cpu.mem.write32(p10, 1);
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -249,10 +254,6 @@ fn main() {
             if cpu.instructions == 1000 && !bootmode_done {
                 bootmode_done = true;
                 cpu.mem.write32(0xC1CA_0178, 0x2000_0000);
-            }
-            if skip_log && pc == 0xC035_CB60 && skip_count < 3 {
-                skip_count += 1;
-                cpu.r[15] = 0xC035_CC06;
             }
         }
         if from_main && pc == 0xC043_3714 {
