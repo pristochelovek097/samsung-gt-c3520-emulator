@@ -345,8 +345,24 @@ fn main() {
                 if v != 0 { print!(" idx{}:{}", k, v); }
             }
             println!();
+            for &k in &[2u32,9,10,18,19,21,22,24,30,36] {
+                let ctx = cpu.mem.read32(fp.wrapping_add(k*8+4));
+                let ca = cpu.va2pa(ctx);
+                print!("[CTX] idx{} ctx={:08x}", k, ctx);
+                for j in 0..4u32 { print!(" {:08x}", cpu.mem.read32(ca.wrapping_add(j*4))); }
+                println!();
+            }
+        }
+        if from_main && pc == 0xC041_72E0 {
+            let pl = cpu.va2pa(0xC9B5_1B47);
+            cpu.mem.write8(pl, 0x20);
+        }
+        if from_main && pc == 0xC042_E114 {
+            let pd = cpu.va2pa(0xC9AF_ED18);
+            cpu.mem.write8(pd.wrapping_add(2), 0xFF);
         }
         cpu.step(!quiet && i < 60);
+        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
