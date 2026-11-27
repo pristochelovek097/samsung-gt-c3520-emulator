@@ -381,12 +381,12 @@ fn main() {
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
         // GiSPort: при регистрации трансфера аппарат выставляет бит 10 статуса.
-        if from_main && gis_count < 2 && pc == 0xC041_B2F8 && cpu.r[4] == 0xCA76_8240 {
+        if from_main && gis_count < 3 && pc == 0xC041_B2F8 && cpu.r[4] == 0xCA76_8240 {
             gis_count += 1;
-            cpu.mem.set_mmio(0x7400_202C, 0x600);
+            cpu.mem.set_mmio(0x7400_202C, 0x8000_0600);
         }
         // Честный вызов callback'а прошивкой снимает бит complete.
-        if from_main && pc == 0xC00C_C2E0 { cpu.mem.set_mmio(0x7400_202C, 0x200); }
+        if from_main && pc == 0xC00C_C2E0 { cpu.mem.set_mmio(0x7400_202C, 0x8000_0200); }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
