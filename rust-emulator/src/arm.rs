@@ -845,7 +845,7 @@ impl<'a> Arm<'a> {
                 self.r[15] = self.r[15].wrapping_add(imm).wrapping_add(2);
                 return;
             }
-            let base = self.thumb_bl_addr.wrapping_add(4).wrapping_add(
+            let base = (self.thumb_bl_addr.wrapping_add(4) & !3).wrapping_add(
                 ((self.thumb_bl_insn << 21) as i32 >> 9) as u32);
             let target = base.wrapping_add((insn & 0x7FF) << 1) & !3;
             self.r[14] = (addr.wrapping_add(2)) | 1;

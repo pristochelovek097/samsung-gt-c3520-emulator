@@ -292,6 +292,25 @@ fn main() {
             else { cpu.cpsr &= !0x20; cpu.r[15] = lr & !3; }
         }
         // Log_Printf: источник символов застрял
+        if from_main && pc == 0xC046_B534 { fmt_iters = 0; fmt_bailed = false; }
+        if from_main && pc == 0xC046_B548 && !fmt_bailed {
+            fmt_iters += 1;
+            if fmt_iters > 2 {
+                fmt_bailed = true;
+                cpu.r[6] = 0;
+                cpu.r[15] = 0xC046_B560;
+                println!("[FMTBAIL] step={} lr={:08x} iters={}", i, cpu.r[14], fmt_iters);
+            }
+        }
+        // Повреждённый указатель функции вывода в	ctxе:.return по эпилогу
+        if from_main && (0xC9AF_D000..0xC9AF_D900).contains(&pc) && (cpu.cpsr & 0x20) == 0 {
+            cpu.cpsr |= 0x20;
+            cpu.r[15] = 0xC046_B85C;
+            println!("[FMTOUT] step={} pc={:08x}", i, pc);
+        }
+        // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
+        // нулями при инициализации канала — восстанавливаем его перед BLX.
+        cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C {
             re_count += 1;
             if re_count == 1 { println!("[RE1] step={} r0={:08x} r1={:08x} r2={:08x} r3={:08x} lr={:08x}", i, cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[14]); }
