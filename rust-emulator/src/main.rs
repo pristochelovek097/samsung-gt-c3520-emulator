@@ -158,6 +158,7 @@ fn main() {
     }
     mem.write32(0xC1F2_A254, 0xC9D5_0100);
     let mut cpu = Arm::new(&mut mem);
+    cpu.strict_mmu = args.iter().any(|a| a == "--strict-mmu");
     cpu.trace_all = trace_all;
     cpu.irq_limit = 0;
 
@@ -358,6 +359,10 @@ fn main() {
         v.into_iter().take(15).map(|(pc, n)| format!("{:08x}:{}", pc, n)).collect()
     };
     println!("[HOTPC] {}", top.join(" "));
+    println!("[ABORT] data={} prefetch={} far={:08x} fsr={:08x}", cpu.data_aborts, cpu.prefetch_aborts, cpu.fault_far, cpu.fault_fsr);
+    for &(n, pc, far, fsr) in cpu.abort_first.iter().take(10) {
+        println!("[ABORT] #{} pc={:08x} far={:08x} fsr={:02x}", n, pc, far, fsr);
+    }
     println!("[WATCH] hits={}", cpu.mem.watch_hits.len());
     for &(p, a, o, n) in cpu.mem.watch_hits.iter().take(20) {
         println!("[WATCH] pc={:08x} addr={:08x} {:08x} -> {:08x}", p, a, o, n);

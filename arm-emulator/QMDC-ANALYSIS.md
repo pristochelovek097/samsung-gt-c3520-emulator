@@ -2517,3 +2517,31 @@ L2 адрес = 0xC3BCA2EC, L2 desc = 0x00000000 (invalid)
 Итог: RE=0, 19.53 MIPS. Trap остался на шаге 421447706
 (`PC escaped code region at 005a0058`), restore венеера 0xC02D2954
 по-прежнему необходим. MMIO/IRQ-таблица/[IRQOPEN] — без изменений.
+
+## Аппаратный MMU Translation Fault (2026-11-27)
+
+В arm.rs реализован путь фолта по ARM926EJ-S:
+- FAR → CP15 c6, FSR → CP15 c5 (MRC c5/c6 уже работают через cp15[5]/cp15[6]);
+- `l1_desc & 3 == 0` → FSR 0x5 (Section Translation Fault),
+  `l2_desc & 3 == 0` → FSR 0x7 (Page Translation Fault);
+- Data Abort → vbase+0x10, LR_abt = упавший PC + 8 (ARM) / +4 (Thumb);
+- Prefetch Abort → vbase+0x0C, LR_abt = PC + 4 (ARM) / +2 (Thumb);
+- сброс TLB при фолте; выборка инструкций идёт через `ifetch16/translate(data=false)`.
+
+Включение через `--strict-mmu`. При включении получаем шторм абортов:
+```
+#1 pc=c00588b8 far=c99a0d5c fsr=07
+#1 pc=c00588b8 far=c99a0d60 fsr=07
+...
+#3 pc=000000ac far=fffffff8 fsr=05
+#3 pc=000000ac far=fffffffc fsr=05
+```
+Обработчик по 0xAC застревает на FAR 0xFFFFFFFx — demand paging прошивки
+в текущем состоянии таблиц не сходится. Поэтому строгий режим сделан
+опциональным, а в обычном прогоне сохранён прежний fallback.
+
+Костыльный алиас 0x3D900000 удалён — прошивка сама мапит физическую
+память, прогон от этого не изменился.
+
+Итог: RE=0, 20.39 MIPS, halt 421447876 (`PC escaped ... 005a0058`),
+MMIO/IRQ-таблица/[IRQOPEN] без изменений.

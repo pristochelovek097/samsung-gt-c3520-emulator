@@ -34,6 +34,11 @@ pub struct Arm<'a> {
     pub prefetch_aborts: u64,
     pub strict_aborts: bool,
     pub after_zero_fill: bool,
+    pub strict_mmu: bool,
+    pub cur_insn_pc: u32,
+    pub fault_far: u32,
+    pub fault_fsr: u32,
+    pub abort_first: Vec<(u64, u32, u32, u32)>,
     tlb_va_tag: i64,
     tlb_pa_base: u32,
     tlb_mask: u32,
@@ -50,6 +55,7 @@ impl<'a> Arm<'a> {
             thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0, msr_dbg: 0, bad_call_returns: 0,
             trace_all: false, wfi_count: 0, irq_open_steps: 0, data_aborts: 0,
             prefetch_aborts: 0, strict_aborts: false, after_zero_fill: false,
+            strict_mmu: false, cur_insn_pc: 0, fault_far: 0, fault_fsr: 0, abort_first: Vec::new(),
             tlb_va_tag: -1, tlb_pa_base: 0, tlb_mask: 0xFFF,
             tlb_cache: vec![(0xFFFF_FFFF, 0); 256],
             fetch_pc: 0xFFFF_FFFF, fetch_pa: 0, fetch_insn: 0,
@@ -141,7 +147,7 @@ impl<'a> Arm<'a> {
         self.cpsr &= !0x20;
         self.r[14] = ret;
         let base: u32 = if bit(self.cp15[1], 13) { 0xFFFF_0000 } else { 0 };
-        let pa = self.translate(base.wrapping_add(8));
+        let pa = self.translate(base.wrapping_add(8), true);
         self.r[15] = pa & 0xFFFF_FFFC;
     }
 
@@ -158,19 +164,37 @@ impl<'a> Arm<'a> {
         }
     }
 
-    fn raise_abort(&mut self, data: bool) {
+    fn raise_abort(&mut self, data: bool, fsr: u32) {
         if data { self.data_aborts += 1; } else { self.prefetch_aborts += 1; }
-        if !self.strict_aborts { return; }
+        self.fault_fsr = fsr;
+        if self.abort_first.len() < 16 {
+            self.abort_first.push((self.instructions, self.cur_insn_pc, self.fault_far, fsr));
+        }
+        let was_thumb = bit(self.cpsr, 5);
         self.spsr = self.cpsr;
         self.switch_mode(0x17);
         self.cpsr |= 0x80;
         self.cpsr &= !0x20;
-        self.r[14] = self.r[15].wrapping_add(if data { 4 } else { 4 });
+        // LR_abt указывает на упавшую инструкцию: subs pc,lr,#8 (data, ARM)
+        // или subs pc,lr,#4 (prefetch, ARM); Thumb — +4 / +2.
+        let ret = if data {
+            self.cur_insn_pc.wrapping_add(if was_thumb { 4 } else { 8 })
+        } else {
+            self.cur_insn_pc.wrapping_add(if was_thumb { 2 } else { 4 })
+        };
+        self.r[14] = ret;
         let vbase: u32 = if bit(self.cp15[1], 13) { 0xFFFF_0000 } else { 0 };
         self.r[15] = vbase.wrapping_add(if data { 0x10 } else { 0x0C });
+        // Недействительный перевод — сбросить TLB.
+        for e in self.tlb_cache.iter_mut() { *e = (0xFFFF_FFFF, 0); }
+        self.tlb_va_tag = -1;
     }
 
-    fn translate(&mut self, va: u32) -> u32 {
+    fn translate(&mut self, va: u32, data: bool) -> u32 {
+        self.translate_inner(va, data, true)
+    }
+
+    fn translate_inner(&mut self, va: u32, data: bool, fault: bool) -> u32 {
         if bit(self.itcm_reg, 0) && va < crate::memory::TCM_SIZE { return va; }
         if bit(self.dtcm_reg, 0) {
             let base = self.dtcm_reg & 0xFFFF_F000;
@@ -212,7 +236,11 @@ impl<'a> Arm<'a> {
                 return self.tlb_pa_base | (va & 0xFFFF);
             }
         }
-        if self.strict_aborts { self.raise_abort(bit(l1, 10)); }
+        if fault && self.strict_mmu {
+            let fsr = if typ == 0 { 0x5 } else { 0x7 };
+            self.fault_far = va;
+            self.raise_abort(data, fsr);
+        }
         va
     }
 
@@ -235,16 +263,16 @@ impl<'a> Arm<'a> {
         (ttbr, l1a, l1, l2a, l2, pa)
     }
 
-    pub fn va2pa(&mut self, va: u32) -> u32 { self.translate(va) }
+    pub fn va2pa(&mut self, va: u32) -> u32 { self.translate_inner(va, true, false) }
 
     #[inline] fn rd32(&mut self, a: u32) -> u32 {
-        let pa = self.translate(a & !3);
+        let pa = self.translate(a & !3, true);
         let w = self.mem.read32(pa);
         if a & 3 == 0 { w } else { w.rotate_right((a & 3) * 8) }
     }
     #[inline] fn wr32(&mut self, a: u32, v: u32) {
         let w = if a & 3 == 0 { v } else { v.rotate_left((a & 3) * 8) };
-        let pa = self.translate(a & !3);
+        let pa = self.translate(a & !3, true);
         let tt = self.cp15[2] & 0xFFFF_C000;
         if pa >= tt && pa < tt.wrapping_add(0x1_0000) {
             for e in self.tlb_cache.iter_mut() { *e = (0xFFFF_FFFF, 0); }
@@ -253,10 +281,11 @@ impl<'a> Arm<'a> {
         if pa == self.fetch_pa { self.fetch_pc = 0xFFFF_FFFF; }
         self.mem.write32(pa, w);
     }
-    #[inline] fn rd16(&mut self, a: u32) -> u32 { let pa = self.translate(a); self.mem.read16(pa) }
-    #[inline] fn wr16(&mut self, a: u32, v: u32) { let pa = self.translate(a); self.mem.write16(pa, v) }
-    #[inline] fn rd8(&mut self, a: u32) -> u32 { let pa = self.translate(a); self.mem.read8(pa) }
-    #[inline] fn wr8(&mut self, a: u32, v: u32) { let pa = self.translate(a); self.mem.write8(pa, v) }
+    #[inline] fn rd16(&mut self, a: u32) -> u32 { let pa = self.translate(a, true); self.mem.read16(pa) }
+    #[inline] fn ifetch16(&mut self, a: u32) -> u32 { let pa = self.translate(a, false); self.mem.read16(pa) }
+    #[inline] fn wr16(&mut self, a: u32, v: u32) { let pa = self.translate(a, true); self.mem.write16(pa, v) }
+    #[inline] fn rd8(&mut self, a: u32) -> u32 { let pa = self.translate(a, true); self.mem.read8(pa) }
+    #[inline] fn wr8(&mut self, a: u32, v: u32) { let pa = self.translate(a, true); self.mem.write8(pa, v) }
 
     fn shift(&mut self, value: u32, typ: u32, amount: u32) -> u32 {
         self.shifter_carry = bit(self.cpsr, 29) as u32;
@@ -356,6 +385,7 @@ impl<'a> Arm<'a> {
 
     pub fn step(&mut self, trace: bool) {
         if self.halted { return; }
+        self.cur_insn_pc = self.r[15] & !3;
         // Жёсткий trap: PC вышел за валидные области кода.
         let cur = self.r[15];
         if !(cur < 0x4_0000 || (cur >= 0xC000_0000 && cur < 0xC120_0000)) {
@@ -367,7 +397,7 @@ impl<'a> Arm<'a> {
         let addr = self.r[15];
         let insn = if self.fetch_pc == addr { self.fetch_insn } else {
             let v = self.rd32(addr);
-            self.fetch_pc = addr; self.fetch_pa = self.translate(addr & !3); self.fetch_insn = v;
+            self.fetch_pc = addr; self.fetch_pa = self.translate(addr & !3, false); self.fetch_insn = v;
             v
         };
         if insn == 0 { self.zero_run += 1; if self.zero_run > 500 {
@@ -598,7 +628,7 @@ impl<'a> Arm<'a> {
 
     fn step_thumb(&mut self, trace: bool) {
         let addr = self.r[15] & !1;
-        let insn = self.rd16(addr);
+        let insn = self.ifetch16(addr);
         let bl_was_pending = self.thumb_bl_pending;
         self.thumb_bl_pending = false;
         if insn == 0 { self.zero_run += 1; if self.zero_run > 500 {

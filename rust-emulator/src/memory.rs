@@ -52,13 +52,6 @@ impl Memory {
     }
 
     fn flat_idx(&self, addr: u32) -> Option<(usize, usize)> {
-        // Перемапленная ОС страница: L2-дескриптор 0x3D900A01 указывает
-        // на PA 0x3D900000. Эмуляция: алиас на исходную SDRAM-страницу,
-        // которую ядро туда скопировало при создании потока.
-        if addr >= 0x3D90_0000 && addr < 0x3D91_0000 {
-            let a = 0xC1B6_1000u32.wrapping_add(addr - 0x3D90_0000);
-            return Some((1, (a - DRAM_BASE) as usize));
-        }
         if addr < TCM_SIZE { return Some((0, addr as usize)); }
         if addr >= DRAM_BASE && addr < DRAM_BASE + DRAM_LEN as u32 {
             return Some((1, (addr - DRAM_BASE) as usize));
