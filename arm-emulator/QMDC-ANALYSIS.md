@@ -2867,3 +2867,26 @@ INTC/UART не пишутся, таймерный IRQ не генерирует�
 Итог: RE=0, 200M не halted, PC=0xC03C4ABC, CPSR=0x800000FF,
 LCD commands=4 pixels=2 (кадров нет), INTC/UART молчат, ITCM 0x10180
 нули, [IRQOPEN]=0.
+
+## Возврат бита 17 и Region$$Table (2026-11-27)
+
+Постоянная 1 в бите 17 на 0x7800800C/0x7800000C заперла опрос
+в 0xC03C4ABC и убрала [IRQOPEN], поэтому ответ убран — вернулась
+конфигурация e93ca5a: IRQOPEN=10, SP=0x3F0378A4, RE=0.
+
+Поиск Region$$Table в MAIN дал кандидатов:
+```
+0xC0038FC4: len=0x21916 dst=0x00010000 src=0xC0038E94
+0xC0038FE4: len=0x01916 dst=0x00010001 src=0xC0038D74
+0xC0038FF4: len=0x00018 dst=0x00010000 src=0xC0038DA4
+0xC0039004: len=0x41916 dst=0x00010001 src=0xC0038F04
+```
+Дизассембл по src+0x144 / src+0x180 показал **таблицы данных**,
+а не ARM-код TCT_Interrupt_Context_Save/Restore — это не искомый
+блок ITCM. Надёжного копировщика найти не удалось; заглушка
+0x10000..0x40000 остаётся.
+
+Итог 200M: RE=0, IRQOPEN=10, TIMERIRQ=0 (I=0 не удерживается),
+PC=0xC02E1B30, CPSR=0x600000FF, SP=0x3F0378A4, HOTPC — опрос
+0xC02E1B30/0xC028A16A/0xC03C4A9A, MMIO NAND+LCD, ITCM 0x10180
+нули, LCD commands=4 pixels=2.
