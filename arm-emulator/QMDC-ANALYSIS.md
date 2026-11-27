@@ -3721,3 +3721,25 @@ ROOT при старте не может выполнить эту копию ч
 
 Стабильный прогон сохранён: RE=0, IRQOPEN=300031, TIMERIRQ=1,
 200M без halt, LCD commands=4 pixels=2.
+
+## Честный ITCM-оверлей 0x8B8 из ROOT (2026-11-27)
+
+Запись 0x2C08 — это {src=0xC0008D04, dst_start=0x00010000,
+dst_end=0x000108B8, pa_dst=0x2FFE0000}; длина = 0x108B8-0x10000
+= 0x8B8 (2232 байт). Скопировано из ROOT+0x8D04 в PA 0x2FFE0000.
+
+Дизассембл после копирования:
+- VA 0x10000 (Thumb): `push {r4,r5,r6,lr}; movs r5,r0; subs r0,#8;
+  cmp r0,#0x39; blo ...; adr r1,#0x54; bl ...` — валидный код;
+- VA 0x10144 (ARM): `ldr r2,[pc,#0x2c]; mov r1,#0x99; strb r1,[r2];
+  cmp r0,#0x20; ...` — INTC-инициализация;
+- VA 0x10180 (ARM): `ldr r1,[pc,#0x40]; ldr r0,[r1,#0x2c];
+  ldrb r2,[r3]; cmp r0,r2; strb r0,[r3]; ...` — обработчик.
+
+Report_Error с оверлеем: шаг 1053282,
+`r0=1, r1=0x3D, r2=1, r3=0x0F, LR=0xC0464271`.
+Проверка 0xC042C518 читает глобальный байт по VA 0xC9D4D821
+(литерал 0xC042C5E0) и требует его == 1; он 0.
+
+200M: RE=1, IRQOPEN=303251, TIMERIRQ=1, HOTPC c03e0114,
+LCD commands=4 pixels=2, MMIO NAND+LCD.

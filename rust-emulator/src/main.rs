@@ -222,6 +222,14 @@ fn main() {
         for k in 0..8u32 { print!(" {:08x}", cpu.mem.read32(pa.wrapping_add(k*4))); }
         println!();
     }
+    // Region$$Table ROOT 0x2C08: src=0xC0008D04, dst VA 0x00010000,
+    // dst_end=0x000108B8 → длина 0x8B8; PA-адрес 0x2FFE0000.
+    if let Ok(rootd) = fs::read("/tmp/opencode/dec/ER_FLASH_CB_ROOT.bin") {
+        let off = 0x8D04usize;
+        let n = 0x8B8usize.min(rootd.len().saturating_sub(off));
+        for k in 0..n { cpu.mem.write8(0x2FFE_0000u32.wrapping_add(k as u32), rootd[off+k] as u32); }
+        println!("[ITCMOVL] {} bytes", n);
+    }
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
