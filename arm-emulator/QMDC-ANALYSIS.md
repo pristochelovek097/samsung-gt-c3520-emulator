@@ -3796,3 +3796,33 @@ ITCM-функция по 0x10060 — `pop {r4,r5,r6,pc}`; она вернула 
 
 Итог: RE=1, TIMERIRQ=1, IRQOPEN=303251, флаг 0xCA75F810=01,
 HOTPC c03e0114, LCD commands=4 pixels=2.
+
+## Функция ITCM 0x00010000 ( ack INTC ) — полный разбор (2026-11-27)
+
+```
+push {r4,r5,r6,lr}; movs r5,r0
+subs r0,#8; cmp r0,#0x39; blo ok      ; номер IRQ 8..65
+  (иначе bl 0xC03FEBFA с r2=0x1BC, r0=0x60)
+ok: movs r0,#1
+cmp r5,#0x20; bhs +4
+ldr r4,[pc,#0x94] → INTC struct; subs r5,#0x20
+lsls r0,r5; movs r5,r0                 ; mask = 1 << (irq-32)
+ldr r0,[r4,#0x30]; tst r0,r5           ; pending
+ldr r0,[r4,#0xc];  beq noirq
+tst r0,r5; beq skip
+str r5,[r4,#0x10]                      ; EOI
+skip: ldr r0,[r4,#4]; tst r0,r5
+ldr r0,[r4]; beq set
+bics r0,r5
+set: orrs r0,r5; str r0,[r4]
+ldr r0,[r4,#0x30]; bics r0,r5; str r0,[r4,#0x30]
+pop {r4,r5,r6,pc}                      ; r0 = 1
+```
+Функция — ack/EOI INTC, возвращает 1 при корректном номере.
+На трассе она вернула r0=0x200, затем 0xC0382960/62 прочитал
+байт по VA 0xCA7682F0 (=0) и вернул 0 → 0xC03687C8 сформировал
+0x3D010F00. Принудительная установка этого байта в 1 не убрала
+RE. Источники 1..41 дают одинаковый результат.
+
+Итог: RE=1, TIMERIRQ=1, IRQOPEN=303267, HOTPC c03e0114,
+LCD commands=4 pixels=2.
