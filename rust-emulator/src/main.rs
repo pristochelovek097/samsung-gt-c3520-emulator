@@ -331,6 +331,13 @@ fn main() {
             cpu.inject_irq();
             timer_irqs += 1;
         }
+        // Периодический таймерный IRQ после 1M шагов (src0).
+        if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
+            && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
+            cpu.mem.set_mmio(0x7000_102C, 1);
+            cpu.inject_irq();
+            timer_irqs += 1;
+        }
         // Вектор IRQ в ITCM может быть затёрт ядром — восстанавливаем.
         if from_main && cpu.mem.read32(0x18) == 0 {
             cpu.mem.write32(0x18, 0xE59F_F330);
