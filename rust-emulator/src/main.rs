@@ -206,6 +206,7 @@ fn main() {
     let mut out_iters = 0u32;
     let mut re_count = 0u32;
     let mut timer_irqs = 0u64;
+    let mut vec_restores = 0u64;
     let mut dbg_once = false;
     let mut saw_os_init = false;
     let mut saw_dispatch = false;
@@ -316,6 +317,13 @@ fn main() {
         }
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
+        // Вектор IRQ в ITCM может быть затёрт ядром — восстанавливаем.
+        if from_main && cpu.mem.read32(0x18) == 0 {
+            cpu.mem.write32(0x18, 0xE59F_F330);
+            cpu.mem.write32(0x1C, 0xE59F_F32C);
+            cpu.mem.write32(0x350, 0xC0A9_6454);
+            vec_restores += 1;
+        }
         // Периодический таймерный IRQ — только после 1M шагов, когда
         // LISR уже заполнены и ОС дошла до wait-loop 0xC0096032.
         if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
@@ -367,7 +375,7 @@ fn main() {
         // Semihosting SYS_OPEN (svc #0xab, r0=1) из _initio:
         // возвращаем валидный дескриптор и продолжаем без SVC-ловушки.
         if from_main && pc == 0xC002_0010 && cpu.r[0] == 1 {
-            cpu.r[0] = 0;
+            cpu.r[0] = 1;
             cpu.r[15] = 0xC002_0012;
             sys_open_count += 1;
         }
@@ -399,6 +407,9 @@ fn main() {
     println!("[TAB40] va=ca2ccabc pa={:08x} live={}/40", pa, live);
     println!("[LCD] commands={} pixels={} frames={}", cpu.mem.lcd.commands,
              cpu.mem.lcd.pixels, cpu.mem.lcd.frames);
+    let flag_pa = cpu.va2pa(0xCA75_F810);
+    println!("[FLAG] {:02x}", cpu.mem.read8(flag_pa));
+    println!("[VECRESTORE] {}", vec_restores);
     println!("[TIMERIRQ] {}", timer_irqs);
     if from_main {
         let fp = cpu.va2pa(0xCA2C_C558);
