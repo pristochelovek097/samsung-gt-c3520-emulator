@@ -322,27 +322,6 @@ fn main() {
             timer_irqs += 1;
         }
         cpu.step(!quiet && i < 60);
-        // IRQ-вектор уводит в мусорный обработчик: возвращаемся по LR.
-        if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
-            let lr = cpu.r[14];
-            if (cpu.cpsr & 0x1F) == 0x12 {
-                // Полный выход из IRQ: CPSR = SPSR_irq, I снят.
-                cpu.cpsr = (cpu.spsr & 0xF800_00FF) & !0x80;
-                cpu.r[15] = lr & !1;
-            } else {
-                cpu.cpsr |= if lr & 1 != 0 { 0x20 } else { 0 };
-                cpu.r[15] = lr & !1;
-            }
-        }
-        if from_main && pc == 0xC041_72E0 {
-            let pl = cpu.va2pa(0xC9B5_1B47);
-            cpu.mem.write8(pl, 0x20);
-        }
-        if from_main && pc == 0xC042_E114 {
-            let pd = cpu.va2pa(0xC9AF_ED18);
-            cpu.mem.write8(pd.wrapping_add(2), 0xFF);
-        }
-        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {

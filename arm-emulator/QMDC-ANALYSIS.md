@@ -2909,3 +2909,49 @@ SPSR_irq на входе в заглушку (шаг 557282): 0x8000001F (I=1).
 Итог 200M: RE=0, IRQOPEN=8, не halted, PC=0xC02E1B3A,
 CPSR=0x600000FF, HOTPC — кольцо опроса 0xC02E1B24..0xC03C4ABC,
 MMIO NAND+LCD, ITCM 0x10180 нули, LCD commands=4 pixels=2.
+
+## Полный обработчик IRQ 0xC0A96454 (2026-11-27)
+
+```
+c0a96454 sub lr,lr,#4
+c0a96458 push {r0..r7,lr}
+c0a9645c push {r8,sb,sl,fp,ip}
+c0a96460 blx 0xC038F864      ; irq source
+c0a96464 mov r5,r0
+c0a96468 blx 0xC038F874      ; irq index из таблицы
+c0a9646c ldr fp,[pc,#0x28]
+c0a96470 lsl r0,r0,#2
+c0a96474 add fp,fp,r0,lsl #1 ; fp = table + idx*8
+c0a96478 ldr r7,[fp]         ; callback
+c0a9647c cmp r7,#0
+c0a96480 ldrne r0,[fp,#4]
+c0a96484 strne lr,[r0,#8]
+c0a96488 blxne r7            ;
+c0a9648c mov r0,r5
+c0a96490 blx 0xC038F86C      ; EOI/ack INTC
+c0a96494 pop {r8,sb,sl,fp,ip}
+c0a96498 ldm sp!,{r0..r7,pc}^  ; возврат с восстановлением CPSR из SPSR
+```
+То есть 0xC0A96454 **не вызывает 0x10180/0x10144 напрямую** — туда
+идут венееры 0xC03CCAA0/A8 как `ldr pc,[pc,#-4]`: их литералы равны
+0x00010180 / 0x00010144. 바로inus эти адреса должны содержать
+указатели на TCT_Interrupt_Context_Save/Restore, но в ITCM нули.
+
+Трасса после 557282 (post-step CPSR):
+```
+557282 pc=00010184 cpsr=80000092 spsr=8000001f
+557283 pc=00000000 cpsr=8000001f   ← заглушка вернула PC в вектор/ITCM
+557290 pc=00000284 cpsr=800000df   ← I защёлкивается снова
+```
+То есть I=1 возвращается не в обработчике 0xC0A96454, а в коде ITCM
+0x0000026C..0x000002A8, куда уводит наша заглушка.
+
+MRS Rd,SPSR по маске (word & 0xFFFF0FFF)==0xE14F0000:
+- MAIN: 0xC0A8EFE4 (r1) — `mrs r1,spsr; stmdb sp!,{r1}` (TCT save),
+  0xC0A8F1D8 (r2), 0xC0A8F1F8 (r2), 0xC0A8F218 (r2), 0xC0618634 (lr);
+- ROOT: 0x32E0 (r2), 0x3454 (r1), 0x35AC (r0) и др.
+2058T restore: 0xC0A8F1B8 `msr spsr_fc,r1; ldm sp!,{...,pc}^`.
+Это настоящие функции сохранения/восстановления контекста, но они
+находятся в MAIN/ROOT, а не по адресам 0x10144/0x10180 ITCM.
+
+.ptt-разделы проверены — отдельного блока под ITCM нет.
