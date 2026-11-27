@@ -393,6 +393,11 @@ fn main() {
         }
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
+        // Nucleus: сервис по 0xCA7682F0 готов после обработчика IRQ.
+        if from_main && pc == 0xC038_2962 {
+            let fp = cpu.va2pa(0xCA76_82F0);
+            cpu.mem.write8(fp, 1);
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
