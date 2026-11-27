@@ -3907,3 +3907,22 @@ LCD commands=4 pixels=2, FLAG=01.
 
 Итог: RE=1, IRQOPEN=303267, TIMERIRQ=1, HOTPC c03e0114,
 LCD commands=4 pixels=2.
+
+## Настоящие LISR-источники (2026-11-27) — RE=0
+
+С清理 всех искусственных хуков и с INTC_STATUS, соответствующим
+src=18 (слот 0x12 → 0xC02EB4A9), Report_Error исчез: RE=0.
+То же для src=19/20/25. Старые ассертеры 0x3D010F00 больше
+не срабатывают.
+
+Дизассембл:
+- 0xC02EB4A9: `push {r4,lr}; bl 0xC03C9230; pop {r4,pc}` — обёртка;
+- 0xC0A92944: большая функция, читает [r4+0x14], [r4+1], пишет
+  [r4+0x54] и [r5+0x30] — реальный LISR/драйвер.
+
+Трасса 1050070..1050095: PC крутится в ITCM 0x10274..0x102C4,
+r0=0x19 (25) — ack INTC вернул номер, но выхода из цикла нет.
+
+Итог 200M (src=18): RE=0, IRQOPEN=300031, TIMERIRQ=1, WFI=0,
+CPSR=0x20000092, HOTPC 0x102A4..0x102C4 (~39.8M), LCD commands=4
+pixels=2, MMIO NAND+LCD.

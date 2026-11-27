@@ -216,20 +216,6 @@ fn main() {
     // 0xC042E14A; без него дmm1excp.c вызывается по кругу.
     cpu.mem.write8(0xC9AF_ED1A, 0xFF);
     cpu.mem.write8(0xC9B5_1B47, 0x20);
-    for &va in &[0x10000u32, 0x10144, 0x10180, 0x180] {
-        let (ttbr, l1a, l1, l2a, l2, pa) = cpu.mmu_debug(va);
-        print!("[MMUI] va={:08x} ttbr={:08x} l1a={:08x} l1={:08x} l2a={:08x} l2={:08x} pa={:08x}", va, ttbr, l1a, l1, l2a, l2, pa);
-        for k in 0..8u32 { print!(" {:08x}", cpu.mem.read32(pa.wrapping_add(k*4))); }
-        println!();
-    }
-    // Region$$Table ROOT 0x2C08: src=0xC0008D04, dst VA 0x00010000,
-    // dst_end=0x000108B8 → длина 0x8B8; PA-адрес 0x2FFE0000.
-    if let Ok(rootd) = fs::read("/tmp/opencode/dec/ER_FLASH_CB_ROOT.bin") {
-        let off = 0x8D04usize;
-        let n = 0x8B8usize.min(rootd.len().saturating_sub(off));
-        for k in 0..n { cpu.mem.write8(0x2FFE_0000u32.wrapping_add(k as u32), rootd[off+k] as u32); }
-        println!("[ITCMOVL] {} bytes", n);
-    }
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -331,7 +317,7 @@ fn main() {
         }
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
-        if from_main && pc == 0x0001_0180 { cpu.r[0] = 1; }
+        if from_main && pc == 0x0001_0180 { cpu.r[0] = 25; }
         // Периодический таймерный IRQ после 1M шагов (src0 → idx 0x40, безопасный).
         if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
             && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
@@ -393,11 +379,6 @@ fn main() {
         }
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
-        // Nucleus: сервис по 0xCA7682F0 готов после обработчика IRQ.
-        if from_main && pc == 0xC038_2962 {
-            let fp = cpu.va2pa(0xCA76_82F0);
-            cpu.mem.write8(fp, 1);
-        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
