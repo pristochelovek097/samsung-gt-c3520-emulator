@@ -278,11 +278,6 @@ fn main() {
             if out_iters > 8 { cpu.r[4] = cpu.r[6]; }
         }
         // (r6=0) и переходим на нормальный выход форматтера.
-        // Повреждённый указатель функции вывода в	ctxе: возврат на эпилог
-        if from_main && (0xC9AF_D000..0xC9AF_D900).contains(&pc) && (cpu.cpsr & 0x20) == 0 {
-            cpu.cpsr |= 0x20;
-            cpu.r[15] = 0xC046_B85C;
-        }
         // Функциональный указатель уводит в данные вместо кода:
         // Immediate return из callback по LR с восстановлением состояния.
         if from_main && ((0x2029_0000..=0x2029_FFFF).contains(&pc)
@@ -308,6 +303,9 @@ fn main() {
             cpu.r[15] = 0xC046_B85C;
             println!("[FMTOUT] step={} pc={:08x}", i, pc);
         }
+        // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
+        // нулями при инициализации канала — восстанавливаем его перед BLX.
+        if from_main && pc == 0xC038_70EA { cpu.mem.write32(0xC02D_2954, 0xE51F_F004); }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }

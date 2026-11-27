@@ -126,11 +126,11 @@ impl<'a> Arm<'a> {
     // попал в данные/несуществующий код, возвращаемся по LR как из callback.
     // Повреждённый функциональный указатель/данные вместо кода:
     // пропускаем текущее слово и продолжаем линейно.
+    // Раньше здесь был «пропуск неизвестных слов». Теперь любой выход
+    // в данные/несуществующий код — мгновенный abort.
     fn recover_bad_call(&mut self) -> bool {
         self.bad_call_returns += 1;
-        let step = if self.cpsr & 0x20 != 0 { 2 } else { 4 };
-        self.r[15] = self.r[15].wrapping_add(step);
-        true
+        false
     }
 
     fn raise_svc(&mut self) {
@@ -337,6 +337,13 @@ impl<'a> Arm<'a> {
 
     pub fn step(&mut self, trace: bool) {
         if self.halted { return; }
+        // Жёсткий trap: PC вышел за валидные области кода.
+        let cur = self.r[15];
+        if !(cur < 0x4_0000 || (cur >= 0xC000_0000 && cur < 0xC120_0000)) {
+            self.halted = true;
+            self.halt_reason = format!("PC escaped code region at {:08x}", cur);
+            return;
+        }
         if bit(self.cpsr, 5) { self.step_thumb(trace); return; }
         let addr = self.r[15];
         let insn = if self.fetch_pc == addr { self.fetch_insn } else {
@@ -565,9 +572,9 @@ impl<'a> Arm<'a> {
         }
 
         if (insn & 0x0E00_0000) == 0x0C00_0000 || (insn & 0x0F00_0000) == 0x0F00_0000 { return; }
-        // Неизвестная инструкция в области данных: пропускаем слово.
         self.bad_call_returns += 1;
-        self.r[15] = addr.wrapping_add(4);
+        self.halted = true;
+        self.halt_reason = format!("Unhandled ARM opcode {:08x} at {:08x}", insn, addr);
     }
 
     fn step_thumb(&mut self, trace: bool) {
