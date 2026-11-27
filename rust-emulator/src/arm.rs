@@ -225,7 +225,8 @@ impl<'a> Arm<'a> {
             return pa;
         }
         if typ == 1 {
-            let l2base = l1 & 0xFFFF_F000;
+            // Coarse page table: 1 КБ, база = l1 & 0xFFFF_FC00.
+            let l2base = l1 & 0xFFFF_FC00;
             let l2 = self.mem.read32(l2base.wrapping_add(((va >> 12) & 0xFF) << 2));
             let t = l2 & 3;
             if t == 2 {
@@ -260,7 +261,7 @@ impl<'a> Arm<'a> {
         if typ == 2 {
             pa = (l1 & 0xFFF0_0000) | (va & 0x000F_FFFF);
         } else if typ == 1 {
-            let l2b = l1 & 0xFFFF_F000;
+            let l2b = l1 & 0xFFFF_FC00;
             l2a = l2b.wrapping_add(((va >> 12) & 0xFF) << 2);
             l2 = self.mem.read32(l2a);
             let t = l2 & 3;
