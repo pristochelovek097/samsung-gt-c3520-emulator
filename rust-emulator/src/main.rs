@@ -212,6 +212,7 @@ fn main() {
     // DMM1: валидный дескриптор пула — байт +2 (>=1) требует проверка
     // 0xC042E14A; без него дmm1excp.c вызывается по кругу.
     cpu.mem.write8(0xC9AF_ED1A, 0xFF);
+    cpu.mem.write8(0xC9B5_1B47, 0x20);
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -314,6 +315,16 @@ fn main() {
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         cpu.step(!quiet && i < 60);
+        // IRQ-вектор уводит в мусорный обработчик: возвращаемся по LR.
+        if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
+            let lr = cpu.r[14];
+            cpu.cpsr |= if lr & 1 != 0 { 0x20 } else { 0 };
+            cpu.r[15] = lr & !1;
+        }
+        if from_main && pc == 0xC041_72E0 {
+            let pl = cpu.va2pa(0xC9B5_1B47);
+            cpu.mem.write8(pl, 0x20);
+        }
         if from_main && pc == 0xC042_E114 {
             let pd = cpu.va2pa(0xC9AF_ED18);
             cpu.mem.write8(pd.wrapping_add(2), 0xFF);
