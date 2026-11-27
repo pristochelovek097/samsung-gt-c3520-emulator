@@ -202,7 +202,12 @@ impl<'a> Arm<'a> {
     }
 
     fn translate_inner(&mut self, va: u32, data: bool, fault: bool) -> u32 {
-        if bit(self.itcm_reg, 0) && va < crate::memory::TCM_SIZE { return va; }
+        // ARM926EJ-S: ITCM size = 512 << ((itcm_reg >> 2) & 0xF).
+        // Для itcm_reg=0x19 это 0x8000, а не весь TCM_SIZE.
+        if bit(self.itcm_reg, 0) {
+            let sz = 512u32 << ((self.itcm_reg >> 2) & 0xF);
+            if va < sz { return va; }
+        }
         if bit(self.dtcm_reg, 0) {
             let base = self.dtcm_reg & 0xFFFF_F000;
             let size = 1u32 << (((self.dtcm_reg >> 2) & 0x1F) + 9);

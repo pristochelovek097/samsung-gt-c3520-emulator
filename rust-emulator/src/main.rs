@@ -216,6 +216,12 @@ fn main() {
     // 0xC042E14A; без него дmm1excp.c вызывается по кругу.
     cpu.mem.write8(0xC9AF_ED1A, 0xFF);
     cpu.mem.write8(0xC9B5_1B47, 0x20);
+    for &va in &[0x10000u32, 0x10144, 0x10180, 0x180] {
+        let (ttbr, l1a, l1, l2a, l2, pa) = cpu.mmu_debug(va);
+        print!("[MMUI] va={:08x} ttbr={:08x} l1a={:08x} l1={:08x} l2a={:08x} l2={:08x} pa={:08x}", va, ttbr, l1a, l1, l2a, l2, pa);
+        for k in 0..8u32 { print!(" {:08x}", cpu.mem.read32(pa.wrapping_add(k*4))); }
+        println!();
+    }
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -317,6 +323,7 @@ fn main() {
         }
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
+        if from_main && pc == 0x0001_0180 { cpu.r[0] = 1; }
         // Вектор IRQ в ITCM может быть затёрт ядром — восстанавливаем.
         if from_main && cpu.mem.read32(0x18) == 0 {
             cpu.mem.write32(0x18, 0xE59F_F330);
@@ -331,15 +338,6 @@ fn main() {
             cpu.mem.set_mmio(0x7000_102C, 1);
             cpu.inject_irq();
             timer_irqs += 1;
-        }
-        // Подфункции IRQ 0xC038F864/0xC038F86C через венееры 0x10180/0x10144:
-        // обычный возврат по LR, CPSR/SPSR не трогаем.
-        if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
-            // Источник IRQ 0 → индекс 9 (системный таймер) из таблицы 0xC9AFCE4C.
-            if pc == 0x0001_0180 { cpu.r[0] = 0; }
-            let lr = cpu.r[14];
-            if lr & 1 != 0 { cpu.cpsr |= 0x20; } else { cpu.cpsr &= !0x20; }
-            cpu.r[15] = lr & !1;
         }
         if from_main && i == 557_274 {
             let fp = cpu.va2pa(0xCA2C_C558);
