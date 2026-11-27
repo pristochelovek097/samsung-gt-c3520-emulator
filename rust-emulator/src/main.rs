@@ -398,6 +398,10 @@ fn main() {
             let fp = cpu.va2pa(0xCA76_82F0);
             cpu.mem.write8(fp, 1);
         }
+        if from_main && pc == 0xC03B_35B0 {
+            let cp = cpu.va2pa(cpu.r[5].wrapping_add(2));
+            cpu.mem.write8(cp, LISR_IDX);
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
