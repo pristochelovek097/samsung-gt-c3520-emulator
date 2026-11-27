@@ -3617,3 +3617,33 @@ LR=0xC0464271 — возврат после BL, то есть ошибка пр�
 
 Стабильный прогон сохранён: RE=0, IRQOPEN=300031, TIMERIRQ=1,
 LCD commands=4 pixels=2.
+
+## Первый вызов 0xC046423C и проверка 0xC042C518 (2026-11-27)
+
+ ERR1: шаг 756209, `LR=0xC0457204` (вызов из 0xC0457200),
+`r0=1, r1=0x3D, r2=0, r3=8, r4=0, SP=0xC9B64A98`.
+
+Вызывающий — ARM-функция 0xC04571E8:
+```
+add r0,sp,#0x10
+blx 0xC042C518        ; проверка состояния подсистемы
+ldr r2,[sb,#0x10]; mov r3,#0; strd r2,r3,[sp]
+ldm sb,{r0,r1,r2,r3}
+blx 0xC046423C        ; Report_Error(1,0x3D,0,8)
+```
+Проверка 0xC042C518 (Thumb):
+```
+push {r0,r4,r5,r6,r7,lr}; sub sp,#0x38
+ldr r0,[pc,#0xc0]; ldrb r0,[r0]
+cmp r0,#1; bne → return 0   ← провал (глобальный флаг != 1)
+```
+Рядом по 0xC045720C лежит ASCII "AST_ERROR" — это и есть
+диагностическая строка, которую ОС пыталась напечатать.
+
+Память: write8/16/32 в PA 0x2FFE0000..0x30000000 не отбрасываются
+(идут в sparse pages), text_readonly茧 protects только 0xC0000000..
+0xC11C0000. Но MAIN ничего туда не пишет — Region$$Table копирует
+только IMAGE/DATA_RW/DSP/MAIN/ROOT.
+
+Стабильный прогон сохранён: RE=0, IRQOPEN=300031, TIMERIRQ=1,
+200M без halt, LCD commands=4 pixels=2.
