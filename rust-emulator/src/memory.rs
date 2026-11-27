@@ -24,6 +24,7 @@ pub struct Memory {
     pub watch_hits: Vec<(u32, u32, u32, u32)>,
     pub code_watch_enabled: bool,
     pub code_writes: Vec<(u32, u32, u32, u32)>,
+    pub text_readonly: bool,
     pub pt_watch_enabled: bool,
     pub pt_writes: Vec<(u32, u32, u32, u32)>,
 }
@@ -41,6 +42,7 @@ impl Memory {
             io_seen: HashMap::new(),
             watch_addr: 0, watch_pc: 0, watch_hits: Vec::new(),
             code_watch_enabled: false, code_writes: Vec::new(),
+            text_readonly: false,
             pt_watch_enabled: false, pt_writes: Vec::new(),
         }
     }
@@ -138,6 +140,7 @@ impl Memory {
     pub fn write32(&mut self, addr: u32, value: u32) {
         let old = if self.watch_addr != 0 || self.code_watch_enabled { self.read32_raw(addr) } else { 0 };
         self.note_write(addr & !3, old, value);
+        if self.text_readonly && (addr & !3) >= 0xC000_0000 && (addr & !3) < 0xC11C_0000 { return; }
         if self.lcd_port(addr) { self.lcd.write(addr, value); self.io_seen.entry(addr & !3).or_insert((0,1)).1 += 1; return; }
         if (addr & !3) == 0x7000_2018 { return; } // auto-clear go bit
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 {
@@ -174,6 +177,7 @@ impl Memory {
     pub fn write16(&mut self, addr: u32, value: u32) {
         let old = self.read16(addr);
         self.note_write(addr & !1, old, value & 0xFFFF);
+        if self.text_readonly && (addr & !1) >= 0xC000_0000 && (addr & !1) < 0xC11C_0000 { return; }
         if self.lcd_port(addr) { self.lcd.write(addr, value & 0xFFFF); return; }
         let a = addr & !1;
         if let Some((bank, o)) = self.flat_idx(a) {
@@ -203,6 +207,7 @@ impl Memory {
     pub fn write8(&mut self, addr: u32, value: u32) {
         let old = self.read8(addr);
         self.note_write(addr, old, value & 0xFF);
+        if self.text_readonly && addr >= 0xC000_0000 && addr < 0xC11C_0000 { return; }
         if self.lcd_port(addr) { self.lcd.write(addr, value & 0xFF); return; }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 { self.nand.write(addr, value); return; }
         if let Some((bank, o)) = self.flat_idx(addr) {

@@ -214,7 +214,7 @@ fn main() {
         if cpu.halted { break; }
         let pc = cpu.r[15];
         cpu.mem.watch_pc = pc;
-        if i == 1000 { cpu.mem.code_watch_enabled = true; }
+        if i == 1000 { cpu.mem.code_watch_enabled = true; cpu.mem.text_readonly = true; }
         if i == 421_000_000 { cpu.mem.pt_watch_enabled = true; }
         // HOTPC: считаем редко (раз в 4096 тактов), чтобы не тормозить цикл
         if (start_root || from_main) && (i & 4095) == 0 {
@@ -310,7 +310,6 @@ fn main() {
         }
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
-        if from_main && pc == 0xC038_70EA { cpu.mem.write32(0xC02D_2954, 0xE51F_F004); }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C {
             re_count += 1;
