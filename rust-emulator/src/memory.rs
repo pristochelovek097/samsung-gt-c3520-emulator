@@ -28,6 +28,7 @@ pub struct Memory {
     pub pt_watch_enabled: bool,
     pub pt_writes: Vec<(u32, u32, u32, u32)>,
     pub fifo_bytes: Vec<(u32, u8)>,
+    pub pmu_writes: Vec<(u32, u32)>,
 }
 
 impl Memory {
@@ -44,7 +45,7 @@ impl Memory {
             watch_addr: 0, watch_pc: 0, watch_hits: Vec::new(),
             code_watch_enabled: false, code_writes: Vec::new(),
             text_readonly: false,
-            pt_watch_enabled: false, pt_writes: Vec::new(), fifo_bytes: Vec::new(),
+            pt_watch_enabled: false, pt_writes: Vec::new(), fifo_bytes: Vec::new(), pmu_writes: Vec::new(),
         }
     }
 
@@ -141,6 +142,10 @@ impl Memory {
     pub fn write32(&mut self, addr: u32, value: u32) {
         let old = if self.watch_addr != 0 || self.code_watch_enabled { self.read32_raw(addr) } else { 0 };
         self.note_write(addr & !3, old, value);
+        if ((addr >= 0x7800_0000 && addr < 0x7802_0000) || (addr >= 0x7000_0000 && addr < 0x7002_0000))
+            && addr != 0x7800_8010 && addr != 0x7800_0010 {
+            if self.pmu_writes.len() < 256 { self.pmu_writes.push((addr, value)); }
+        }
         if self.text_readonly && (addr & !3) >= 0xC000_0000 && (addr & !3) < 0xC11C_0000 { return; }
         if self.lcd_port(addr) { self.lcd.write(addr, value); self.io_seen.entry(addr & !3).or_insert((0,1)).1 += 1; return; }
         if (addr & !3) == 0x7000_2018 { return; } // auto-clear go bit

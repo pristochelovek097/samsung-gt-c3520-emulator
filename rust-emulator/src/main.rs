@@ -406,6 +406,8 @@ fn main() {
         let hex: String = b.iter().take(64).map(|&(_,c)| format!("{:02x}",c)).collect();
         println!("[FIFO] n={} ascii='{}' hex={}", b.len(), ascii, hex);
     }
+    println!("[PMU] n={}", cpu.mem.pmu_writes.len());
+    for &(a,v) in cpu.mem.pmu_writes.iter().take(24) { println!("[PMU] {:08x} = {:08x}", a, v); }
     println!("[RE] count={}", re_count);
     println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
              cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);
