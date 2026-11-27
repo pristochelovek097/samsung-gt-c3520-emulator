@@ -216,6 +216,25 @@ impl<'a> Arm<'a> {
         va
     }
 
+    pub fn mmu_debug(&mut self, va: u32) -> (u32, u32, u32, u32, u32, u32) {
+        let ttbr = self.cp15[2] & 0xFFFF_C000;
+        let l1a = ttbr.wrapping_add((va >> 20) << 2);
+        let l1 = self.mem.read32(l1a);
+        let mut l2a = 0u32; let mut l2 = 0u32; let mut pa = va;
+        let typ = l1 & 3;
+        if typ == 2 {
+            pa = (l1 & 0xFFF0_0000) | (va & 0x000F_FFFF);
+        } else if typ == 1 {
+            let l2b = l1 & 0xFFFF_F000;
+            l2a = l2b.wrapping_add(((va >> 12) & 0xFF) << 2);
+            l2 = self.mem.read32(l2a);
+            let t = l2 & 3;
+            if t == 2 { pa = (l2 & 0xFFFF_F000) | (va & 0xFFF); }
+            else if t == 1 { pa = (l2 & 0xFFFF_0000) | (va & 0xFFFF); }
+        }
+        (ttbr, l1a, l1, l2a, l2, pa)
+    }
+
     pub fn va2pa(&mut self, va: u32) -> u32 { self.translate(va) }
 
     #[inline] fn rd32(&mut self, a: u32) -> u32 {

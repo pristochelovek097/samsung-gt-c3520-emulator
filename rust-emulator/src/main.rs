@@ -214,6 +214,7 @@ fn main() {
         let pc = cpu.r[15];
         cpu.mem.watch_pc = pc;
         if i == 1000 { cpu.mem.code_watch_enabled = true; }
+        if i == 421_000_000 { cpu.mem.pt_watch_enabled = true; }
         // HOTPC: считаем редко (раз в 4096 тактов), чтобы не тормозить цикл
         if (start_root || from_main) && (i & 4095) == 0 {
             *hist.entry(pc & !1).or_insert(0) += 4096;
@@ -360,6 +361,10 @@ fn main() {
     println!("[WATCH] hits={}", cpu.mem.watch_hits.len());
     for &(p, a, o, n) in cpu.mem.watch_hits.iter().take(20) {
         println!("[WATCH] pc={:08x} addr={:08x} {:08x} -> {:08x}", p, a, o, n);
+    }
+    println!("[PTWR] count={}", cpu.mem.pt_writes.len());
+    for &(p, a, o, n) in cpu.mem.pt_writes.iter().take(40) {
+        println!("[PTWR] pc={:08x} addr={:08x} {:08x} -> {:08x}", p, a, o, n);
     }
     println!("[CODEWR] count={}", cpu.mem.code_writes.len());
     for &(p, a, o, n) in cpu.mem.code_writes.iter().take(20) {

@@ -24,6 +24,8 @@ pub struct Memory {
     pub watch_hits: Vec<(u32, u32, u32, u32)>,
     pub code_watch_enabled: bool,
     pub code_writes: Vec<(u32, u32, u32, u32)>,
+    pub pt_watch_enabled: bool,
+    pub pt_writes: Vec<(u32, u32, u32, u32)>,
 }
 
 impl Memory {
@@ -39,6 +41,7 @@ impl Memory {
             io_seen: HashMap::new(),
             watch_addr: 0, watch_pc: 0, watch_hits: Vec::new(),
             code_watch_enabled: false, code_writes: Vec::new(),
+            pt_watch_enabled: false, pt_writes: Vec::new(),
         }
     }
 
@@ -49,6 +52,13 @@ impl Memory {
     }
 
     fn flat_idx(&self, addr: u32) -> Option<(usize, usize)> {
+        // Перемапленная ОС страница: L2-дескриптор 0x3D900A01 указывает
+        // на PA 0x3D900000. Эмуляция: алиас на исходную SDRAM-страницу,
+        // которую ядро туда скопировало при создании потока.
+        if addr >= 0x3D90_0000 && addr < 0x3D91_0000 {
+            let a = 0xC1B6_1000u32.wrapping_add(addr - 0x3D90_0000);
+            return Some((1, (a - DRAM_BASE) as usize));
+        }
         if addr < TCM_SIZE { return Some((0, addr as usize)); }
         if addr >= DRAM_BASE && addr < DRAM_BASE + DRAM_LEN as u32 {
             return Some((1, (addr - DRAM_BASE) as usize));
@@ -78,6 +88,10 @@ impl Memory {
             if self.watch_hits.len() < 64 {
                 self.watch_hits.push((self.watch_pc, addr, old, new));
             }
+        }
+        if self.pt_watch_enabled && ((addr >= 0xC3BC_4000 && addr < 0xC3BC_8000)
+            || (addr >= 0xC3BCA_000 && addr < 0xC3BD_0000 && addr < 0xC3BC_F000)) {
+            if self.pt_writes.len() < 80 { self.pt_writes.push((self.watch_pc, addr, old, new)); }
         }
         if self.code_watch_enabled && addr >= 0xC000_0000 && addr < 0xC11C_0000 {
             if self.code_writes.len() < 64 {
@@ -165,6 +179,8 @@ impl Memory {
 
     #[inline]
     pub fn write16(&mut self, addr: u32, value: u32) {
+        let old = self.read16(addr);
+        self.note_write(addr & !1, old, value & 0xFFFF);
         if self.lcd_port(addr) { self.lcd.write(addr, value & 0xFFFF); return; }
         let a = addr & !1;
         if let Some((bank, o)) = self.flat_idx(a) {
@@ -192,6 +208,8 @@ impl Memory {
 
     #[inline]
     pub fn write8(&mut self, addr: u32, value: u32) {
+        let old = self.read8(addr);
+        self.note_write(addr, old, value & 0xFF);
         if self.lcd_port(addr) { self.lcd.write(addr, value & 0xFF); return; }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 { self.nand.write(addr, value); return; }
         if let Some((bank, o)) = self.flat_idx(addr) {
