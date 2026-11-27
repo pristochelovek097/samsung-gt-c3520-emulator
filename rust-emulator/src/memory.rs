@@ -112,6 +112,10 @@ impl Memory {
     #[inline]
     pub fn read32(&mut self, addr: u32) -> u32 {
         if addr == 0x7400_202C { return 0x200; }
+        // Готовность периферии: бит 17 ждёт опрос 0xC03C4AB8.
+        if addr >= 0x7800_0000 && addr < 0x7802_0000 && (addr & 0xFFF) == 0x00C {
+            return self.mmio.get(&(addr & !3)).copied().unwrap_or(0) | 0x0002_0000;
+        }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 {
             self.io_seen.entry(addr & !3).or_insert((1, 0)).0 += 1;
             return self.nand.read(addr);
