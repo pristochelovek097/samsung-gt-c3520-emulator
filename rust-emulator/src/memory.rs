@@ -27,6 +27,7 @@ pub struct Memory {
     pub text_readonly: bool,
     pub pt_watch_enabled: bool,
     pub pt_writes: Vec<(u32, u32, u32, u32)>,
+    pub fifo_bytes: Vec<(u32, u8)>,
 }
 
 impl Memory {
@@ -43,7 +44,7 @@ impl Memory {
             watch_addr: 0, watch_pc: 0, watch_hits: Vec::new(),
             code_watch_enabled: false, code_writes: Vec::new(),
             text_readonly: false,
-            pt_watch_enabled: false, pt_writes: Vec::new(),
+            pt_watch_enabled: false, pt_writes: Vec::new(), fifo_bytes: Vec::new(),
         }
     }
 
@@ -205,6 +206,9 @@ impl Memory {
 
     #[inline]
     pub fn write8(&mut self, addr: u32, value: u32) {
+        if addr == 0x7800_8010 || addr == 0x7800_0010 {
+            if self.fifo_bytes.len() < 512 { self.fifo_bytes.push((addr, value as u8)); }
+        }
         let old = self.read8(addr);
         self.note_write(addr, old, value & 0xFF);
         if self.text_readonly && addr >= 0xC000_0000 && addr < 0xC11C_0000 { return; }

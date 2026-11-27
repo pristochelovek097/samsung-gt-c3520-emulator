@@ -400,6 +400,12 @@ fn main() {
         for k in 0..16u32 { print!(" {:08x}", cpu.mem.read32(0x320+k*4)); }
         println!();
     }
+    if from_main {
+        let b = &cpu.mem.fifo_bytes;
+        let ascii: String = b.iter().map(|&(_,c)| if c.is_ascii_graphic() || c == b' ' || c == b'\n' { c as char } else { '.' }).collect();
+        let hex: String = b.iter().take(64).map(|&(_,c)| format!("{:02x}",c)).collect();
+        println!("[FIFO] n={} ascii='{}' hex={}", b.len(), ascii, hex);
+    }
     println!("[RE] count={}", re_count);
     println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
              cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);
