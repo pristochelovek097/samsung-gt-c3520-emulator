@@ -206,6 +206,7 @@ fn main() {
     let mut out_iters = 0u32;
     let mut re_count = 0u32;
     let mut timer_irqs = 0u64;
+    let mut gis_count = 0u32;
     let mut vec_restores = 0u64;
     let mut dbg_once = false;
     let mut saw_os_init = false;
@@ -328,7 +329,7 @@ fn main() {
         // Периодический таймерный IRQ после 1M шагов (src0 → idx 0x40, безопасный).
         if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
             && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
-            cpu.mem.set_mmio(0x7000_102C, 18);
+            cpu.mem.set_mmio(0x7000_102C, 17);
             cpu.inject_irq();
             timer_irqs += 1;
         }
@@ -379,6 +380,13 @@ fn main() {
         }
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
+        // GiSPort: при регистрации трансфера аппарат выставляет бит 10 статуса.
+        if from_main && gis_count < 2 && pc == 0xC041_B2F8 && cpu.r[4] == 0xCA76_8240 {
+            gis_count += 1;
+            cpu.mem.set_mmio(0x7400_202C, 0x600);
+        }
+        // Честный вызов callback'а прошивкой снимает бит complete.
+        if from_main && pc == 0xC00C_C2E0 { cpu.mem.set_mmio(0x7400_202C, 0x200); }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
