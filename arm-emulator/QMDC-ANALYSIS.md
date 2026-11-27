@@ -3743,3 +3743,31 @@ Report_Error с оверлеем: шаг 1053282,
 
 200M: RE=1, IRQOPEN=303251, TIMERIRQ=1, HOTPC c03e0114,
 LCD commands=4 pixels=2, MMIO NAND+LCD.
+
+## Реальные регистры INTC в ITCM-оверлее (2026-11-27)
+
+Дизассембл оверлея (ROOT+0x8D04 → PA 0x2FFE0000):
+```
+0x10144 ldr r2,[pc,#0x2c] → literal @0x10178 = 0x30010028
+        mov r1,#0x99; strb r1,[r2]
+        ldr r1,[pc,#0x1c] → literal @0x1017C = 0x70001000 (INTC base!)
+        strlo r0,[r1,#0x38]; str r0,[r1,#0x138]
+0x10180 ldr r1,[pc,#0x40] → literal @0x101C8 = 0x70001000
+        ldr r0,[r1,#0x2c]  → INTC_STATUS @0x7000102C
+        ldr r3,[pc,#0x3c] → literal @0x101CC = 0x30010028
+        ldrb r2,[r3]; cmp r0,r2; strb r0,[r3]
+        strlo r2,[r1,#0x34]; str r2,[r1,#0x134]
+```
+То есть база INTC = 0x70001000, активный статус — 0x7000102C,
+приоритеты — +0x34/+0x38. Наш `set_mmio(0x7000102C,1)` уже
+подаёт нужный pending-бит.
+
+Точка ухода в Report_Error: шаг 1053243,
+`LR=0xC0457204`, `r0=1, r1=0x3D, r2=1, r3=0x0F`, CPSR=0x4000003F.
+За 12 шагов до неё 0xC042C51E читает байт по VA 0xC9D4D821
+и получает 0 → `cmp r0,#1` проваливается. Это не вектор исключения,
+а проверка состояния подсистемы ОС.
+
+Попытка принудительно взвести флаг 0xC9D4D821 не убрала RE.
+Стабильный прогон сохранён: RE=1, IRQOPEN=303251, TIMERIRQ=1,
+HOTPC c03e0114, LCD commands=4 pixels=2.
