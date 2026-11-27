@@ -324,20 +324,19 @@ fn main() {
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         if from_main && pc == 0x0001_0180 { cpu.r[0] = 1; }
+        // Периодический таймерный IRQ после 1M шагов (src0 → idx 0x40, безопасный).
+        if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
+            && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
+            cpu.mem.set_mmio(0x7000_102C, 1);
+            cpu.inject_irq();
+            timer_irqs += 1;
+        }
         // Вектор IRQ в ITCM может быть затёрт ядром — восстанавливаем.
         if from_main && cpu.mem.read32(0x18) == 0 {
             cpu.mem.write32(0x18, 0xE59F_F330);
             cpu.mem.write32(0x1C, 0xE59F_F32C);
             cpu.mem.write32(0x350, 0xC0A9_6454);
             vec_restores += 1;
-        }
-        // Периодический таймерный IRQ — только после 1M шагов, когда
-        // LISR уже заполнены и ОС дошла до wait-loop 0xC0096032.
-        if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
-            && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
-            cpu.mem.set_mmio(0x7000_102C, 1);
-            cpu.inject_irq();
-            timer_irqs += 1;
         }
         if from_main && i == 557_274 {
             let fp = cpu.va2pa(0xCA2C_C558);
@@ -406,6 +405,7 @@ fn main() {
     println!("[LCD] commands={} pixels={} frames={}", cpu.mem.lcd.commands,
              cpu.mem.lcd.pixels, cpu.mem.lcd.frames);
     let flag_pa = cpu.va2pa(0xCA75_F810);
+
     println!("[FLAG] {:02x}", cpu.mem.read8(flag_pa));
     println!("[VECRESTORE] {}", vec_restores);
     println!("[TIMERIRQ] {}", timer_irqs);
