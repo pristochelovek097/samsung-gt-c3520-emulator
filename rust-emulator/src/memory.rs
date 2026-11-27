@@ -140,6 +140,10 @@ impl Memory {
 
     #[inline]
     pub fn write32(&mut self, addr: u32, value: u32) {
+        // GiSPort: команда старта трансфера 0x7400213C=1 → статус завершения.
+        if (addr & !3) == 0x7400_213C && (value & 0xFF) == 1 {
+            self.mmio.insert(0x7400_202C, 0x8000_0600);
+        }
         let old = if self.watch_addr != 0 || self.code_watch_enabled { self.read32_raw(addr) } else { 0 };
         self.note_write(addr & !3, old, value);
         if ((addr >= 0x7800_0000 && addr < 0x7802_0000) || (addr >= 0x7000_0000 && addr < 0x7002_0000))
