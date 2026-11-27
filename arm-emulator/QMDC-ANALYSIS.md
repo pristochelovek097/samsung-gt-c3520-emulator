@@ -3395,3 +3395,33 @@ CPSR=0x2000009F (переход в system mode), и дальше PC уходит
 Для стабильного прогона пока оставлен рабочий вариант без
 вызова LISR (src0, 3979 IRQ без halt); карта живых источников
 зафиксирована для следующего шага.
+
+## Внутри TCT_Interrupt_Context_Save (2026-11-27)
+
+Полный дизассембл 0xC0A8EFE4..0xC0A8F080:
+```
+mrs r1,spsr; stmdb sp!,{r1}; sub sp,#4
+mrs r1,apsr; and r1,r1,#0x40
+ldr r2,[pc,#0x238]; ldrb r3,[r2]; add r3,#1; strb r3,[r2]
+tst r3,#0xff; beq 0xC0A8F1D8
+orr r1,r1,#0x9f; msr cpsr_fc,r1   ; → system mode 0x1F
+ldr r2,[pc,#0x21c]; mov r3,sp
+ldr r2,[r2]; ldr r1,[pc,#0x214]
+cmp r1,sp; bhi ...; cmp sp,r2; movhi sp,r2
+push {r3,lr}
+ldr r1,[pc,#1fc]; ldrb r1,[r1]; cmp r1,#0x55
+bne 0xC0A8F218
+ldr r1,[pc,#1f0]; ldr lr,[r1]; b 0xC03B35A4
+```
+Аргумент r0 = LISR-контекст 0xC9AFCA0C сохраняется, адрес LISR
+берётся не из него, а через глобальный указатель [pc,#0x1f0] →
+0xC9B61B0C, затем идёт длинная цепочка: 0xC03B35A4 → 0xC03687C8
+(_callback idx10!) → veneer 0xC03C629C → **ITCM 0x00010000**,
+где код отсутствует (все нули). Отсюда PC уходит в 0x000103E8.
+
+Все 10 живых источников (1,16,17,18,19,20,21,22,25,37,41) дают
+одинаковый результат: FLAG=01, TIMERIRQ=1, halt 0x103E8. Ни один
+не доходит до 0xC00CC2DC. Для прохода нужен настоящий блок кода
+в ITCM по 0x00010000 (аналог 0x10180/0x10144).
+
+Вернул стабильный src0: 3979 IRQ, RE=0, без halt.
