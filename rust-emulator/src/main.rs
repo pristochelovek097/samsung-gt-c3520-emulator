@@ -392,6 +392,14 @@ fn main() {
             println!();
         }
     }
+    if from_main {
+        print!("[ITCM0]");
+        for k in 0..16u32 { print!(" {:08x}", cpu.mem.read32(k*4)); }
+        println!();
+        print!("[ITCM320]");
+        for k in 0..16u32 { print!(" {:08x}", cpu.mem.read32(0x320+k*4)); }
+        println!();
+    }
     println!("[RE] count={}", re_count);
     println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
              cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);

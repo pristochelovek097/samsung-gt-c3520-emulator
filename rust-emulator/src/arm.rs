@@ -588,7 +588,11 @@ impl<'a> Arm<'a> {
                         if l {
                             let v = self.rd32(a);
                             if i == 15 {
-                                if bit(v, 0) { self.cpsr |= 0x20; self.r[15] = v & !1; }
+                                // При LDM с ^ бит T берётся из SPSR, а не из бита 0 LR:
+                                // PC выравнивается только по 2 байта.
+                                if l && restore_spsr {
+                                    self.r[15] = v & !1;
+                                } else if bit(v, 0) { self.cpsr |= 0x20; self.r[15] = v & !1; }
                                 else { self.cpsr &= !0x20; self.r[15] = v & 0xFFFF_FFFC; }
                             } else { self.r[i as usize] = v; }
                         } else {
