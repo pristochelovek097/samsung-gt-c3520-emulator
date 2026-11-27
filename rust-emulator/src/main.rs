@@ -135,7 +135,7 @@ fn main() {
     mem.write16(0xC1B5_1BEC, 0x0092);
     mem.write8(0xC1AC_619D, 1);   // флаг 0xC04571A8 (byte == 1)
     mem.write8(0xC1B5_1B47, 1);
-    mem.write16(0xC1B5_1B48, 0xFFFF);   // счётчик каналов для 0xC0419D4C
+    mem.write16(0xC1B5_1B48, 0x900);   // счётчик каналов для 0xC0419D4C
     for k in 0..0x92u32 { mem.write32(0xC1C7_6BE0 + k*8, 0xC1AB_0000); mem.write32(0xC1C7_6BE4 + k*8, 1); }
     mem.write32(0xC1AB_0000, 0xC1AB_0200);
     for k in 0..64u32 { mem.write32(0xC1AB_0200 + k*4, 0xC1AB_0200); }
@@ -246,7 +246,7 @@ fn main() {
             let pflag = cpu.va2pa(0xC9AC_619D);
             cpu.mem.write8(pflag, 1);
             cpu.mem.write8(0xC1B5_1B47, 1);
-            cpu.mem.write16(0xC1B5_1B48, 0xFFFF);
+            cpu.mem.write16(0xC1B5_1B48, 0x900);
             for k in 0..0x92u32 {
                 let e = if k == 0xA { 0xC9D5_0000u32 } else { 0xC9D5_0100u32 };
                 cpu.mem.write32(0xC1C7_6BE0 + k*8, e);
