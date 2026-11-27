@@ -316,10 +316,35 @@ fn main() {
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         // Периодический таймер: IRQ раз в 50000 тактов при I=0.
-        if from_main && (cpu.cpsr & 0x80) == 0 && (cpu.cpsr & 0x1F) != 0x12 && (i % 20_000) == 0 {
+        if from_main && (cpu.cpsr & 0x80) == 0 && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
             cpu.mem.set_mmio(0x7000_102C, 1);
             cpu.inject_irq();
             timer_irqs += 1;
+        }
+        // Подфункции IRQ 0xC038F864/0xC038F86C через венееры 0x10180/0x10144:
+        // обычный возврат по LR, CPSR/SPSR не трогаем.
+        if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
+            // Источник IRQ 0 → индекс 9 (системный таймер) из таблицы 0xC9AFCE4C.
+            if pc == 0x0001_0180 { cpu.r[0] = 0; }
+            let lr = cpu.r[14];
+            if lr & 1 != 0 { cpu.cpsr |= 0x20; } else { cpu.cpsr &= !0x20; }
+            cpu.r[15] = lr & !1;
+        }
+        if from_main && i == 557_274 {
+            let fp = cpu.va2pa(0xCA2C_C558);
+            let src = cpu.va2pa(0xC9AF_CE4C);
+            print!("[IRQTB] fp={:08x}", fp);
+            for k in 0..64u32 {
+                let cb = cpu.mem.read32(fp.wrapping_add(k*8));
+                if cb != 0 { print!(" idx{}:{:08x}", k, cb); }
+            }
+            println!();
+            print!("[SRCTB] src={:08x}", src);
+            for k in 0..64u32 {
+                let v = cpu.mem.read8(src.wrapping_add(k*8+5));
+                if v != 0 { print!(" idx{}:{}", k, v); }
+            }
+            println!();
         }
         cpu.step(!quiet && i < 60);
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }

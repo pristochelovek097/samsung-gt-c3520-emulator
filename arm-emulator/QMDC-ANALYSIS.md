@@ -2955,3 +2955,25 @@ MRS Rd,SPSR по маске (word & 0xFFFF0FFF)==0xE14F0000:
 находятся в MAIN/ROOT, а не по адресам 0x10144/0x10180 ITCM.
 
 .ptt-разделы проверены — отдельного блока под ITCM нет.
+
+## IRQ-таблица и возврат из 0x10180 (2026-11-27)
+
+Дизассембл:
+```
+0xC038F864: push {r4,lr}; blx 0xC03CCAA0; pop {r4,pc}
+0xC038F86C: push {r4,lr}; blx 0xC03CCAA8; pop {r4,pc}
+0xC038F874: ldr r1,[0xC9AFCE4C]; lsl r0,r0,#3; ldrb r0,[r0+5]; bx lr
+0xC0A9646C: ldr fp,[0xC0A9649C] → 0xCA2CC558
+```
+ Callback-таблица `0xCA2CC558` (шаг 557274):
+idx2/9/18/24/30/36 → 0xC0A8EFE4 (TCT save), idx10 → 0xC0368787,
+idx19 → 0xC038D135, idx21/22 → 0xC038D10D.
+Таблица источников `0xC9AFCE4C`: src0→irq9, src18→irq18,
+src19→irq19, src25→irq24.
+
+Заглушка изменена на обычный возврат по LR без CPSR/SPSR и с
+подстановкой источника 0 (→ irq 9) в r0. Результат: `[IRQOPEN]=0`,
+`TIMERIRQ=0` — маска I так и не opened в этом варианте; RE=0.
+
+Итог 200M: RE=0, PC=0xC0420CE4-环路, CPSR=0x200000FF,
+HOTPC 0xC0420CE4/0xC0293036, MMIO NAND+LCD, ITCM 0x10180 нули.
