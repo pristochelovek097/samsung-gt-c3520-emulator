@@ -316,7 +316,7 @@ fn main() {
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         // Периодический таймер: IRQ раз в 50000 тактов при I=0.
-        if from_main && (cpu.cpsr & 0x80) == 0 && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
+        if from_main && (cpu.cpsr & 0x80) == 0 && (cpu.cpsr & 0x1F) != 0x12 && (i % 20_000) == 0 {
             cpu.mem.set_mmio(0x7000_102C, 1);
             cpu.inject_irq();
             timer_irqs += 1;
@@ -325,8 +325,14 @@ fn main() {
         // IRQ-вектор уводит в мусорный обработчик: возвращаемся по LR.
         if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
             let lr = cpu.r[14];
-            cpu.cpsr |= if lr & 1 != 0 { 0x20 } else { 0 };
-            cpu.r[15] = lr & !1;
+            if (cpu.cpsr & 0x1F) == 0x12 {
+                // Полный выход из IRQ: CPSR = SPSR_irq, I снят.
+                cpu.cpsr = (cpu.spsr & 0xF800_00FF) & !0x80;
+                cpu.r[15] = lr & !1;
+            } else {
+                cpu.cpsr |= if lr & 1 != 0 { 0x20 } else { 0 };
+                cpu.r[15] = lr & !1;
+            }
         }
         if from_main && pc == 0xC041_72E0 {
             let pl = cpu.va2pa(0xC9B5_1B47);

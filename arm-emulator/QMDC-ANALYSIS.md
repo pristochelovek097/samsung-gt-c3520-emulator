@@ -2890,3 +2890,22 @@ LCD commands=4 pixels=2 (кадров нет), INTC/UART молчат, ITCM 0x10
 PC=0xC02E1B30, CPSR=0x600000FF, SP=0x3F0378A4, HOTPC — опрос
 0xC02E1B30/0xC028A16A/0xC03C4A9A, MMIO NAND+LCD, ITCM 0x10180
 нули, LCD commands=4 pixels=2.
+
+## Восстановление CPSR в IRQ-заглушке (2026-11-27)
+
+SPSR_irq на входе в заглушку (шаг 557282): 0x8000001F (I=1).
+Заглушка изменена: при mode=0x12 выполняет
+`cpsr = (spsr & 0xF80000FF) & !0x80`, `pc = lr & !1`.
+
+Поиск сигнатур TCT в образах: `mrs r?,spsr` (0xE14F0...) найдена
+только одна — 0xC0A253B0 (`mrs r0,spsr; bx lr`), это тривиальный
+геттер, а не TCT_Interrupt_Context_Save/Restore. Кандидатов с
+`stmfd sp!,{r0-r3,r12,lr}` рядом нет. Истинный блок для 0x10144/
+0x10180 не найден, заглушка осталась.
+
+Таймерный IRQ раз в 20000 тактов при I=0: TIMERIRQ=0 — CPSR
+в точках проверки имеет I=1, условие не выполняется.
+
+Итог 200M: RE=0, IRQOPEN=8, не halted, PC=0xC02E1B3A,
+CPSR=0x600000FF, HOTPC — кольцо опроса 0xC02E1B24..0xC03C4ABC,
+MMIO NAND+LCD, ITCM 0x10180 нули, LCD commands=4 pixels=2.
