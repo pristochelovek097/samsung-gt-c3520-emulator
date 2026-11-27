@@ -3177,3 +3177,25 @@ r0=1 vs r0=0x15 — переход в 0xC0A8E868 вызывается внешн
 
 Итог 200M: RE=0, IRQOPEN=1101, WFI=0, CPSR=0x600000D3,
 HOTPC ASSERT_ERROR-кольцо, LCD commands=4 pixels=2.
+
+## Semihosting SYS_OPEN (2026-11-27)
+
+Трасса 558435..558459 показала: после SVC #0xab управление уходит
+не в 0x32C, а в ITCM 0x1C8 (Nucleus context-switch), затем через
+`bx r1` (0x208) в 0xC0A96434, где из сохранённого CPSR строится
+код ошибки:
+```
+0xC0A9643C and r0,r0,#0x1f → 0x13 (SVC mode)
+0xC0A96440 orr r1,r0,#0x3d000000
+0xC0A96444 orr r1,r1,#0x10000 → 0x3D010013
+0xC0A9644C bl 0xC0A8E868 (assert)
+```
+Это Nucleus treat-неизвестного-SVC путь для SYS_OPEN из _initio.
+
+Эмуляция SYS_OPEN: на `svc #0xab` при r0=1 возвращаем дескриптор
+r0=1 и продолжаем с 0xC0020012, не заходя в SVC. Сработало 3 раза.
+ASSERT_ERROR в FIFO исчез: теперь `n=8`, только 'IIIIIIII'.
+
+Новый барьер: на шаге 558870 `blx r0` с r0=0xD3477195 — мусорный
+указатель из файловой структуры (semihosting FS не эмулируется).
+Халт PC escaped, RE=0, IRQOPEN=1604, WFI=0, LCD commands=4 pixels=2.

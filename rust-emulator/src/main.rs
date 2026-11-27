@@ -200,6 +200,7 @@ fn main() {
     let mut bootmode_done = false;
     let mut skip_count = 0u32;
     let mut irq_injected = false;
+    let mut sys_open_count = 0u64;
     let mut fmt_iters = 0u32;
     let mut fmt_bailed = false;
     let mut out_iters = 0u32;
@@ -355,6 +356,13 @@ fn main() {
             let pd = cpu.va2pa(0xC9AF_ED18);
             cpu.mem.write8(pd.wrapping_add(2), 0xFF);
         }
+        // Semihosting SYS_OPEN (svc #0xab, r0=1) из _initio:
+        // возвращаем валидный дескриптор и продолжаем без SVC-ловушки.
+        if from_main && pc == 0xC002_0010 && cpu.r[0] == 1 {
+            cpu.r[0] = 1;
+            cpu.r[15] = 0xC002_0012;
+            sys_open_count += 1;
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
@@ -408,6 +416,7 @@ fn main() {
     }
     println!("[PMU] n={}", cpu.mem.pmu_writes.len());
     for &(a,v) in cpu.mem.pmu_writes.iter().take(24) { println!("[PMU] {:08x} = {:08x}", a, v); }
+    println!("[SYSOPEN] {}", sys_open_count);
     println!("[RE] count={}", re_count);
     println!("[IRQOPEN] steps={} halted={} reason={} os_init={} dispatch={}",
              cpu.irq_open_steps, cpu.halted, cpu.halt_reason, saw_os_init, saw_dispatch);
