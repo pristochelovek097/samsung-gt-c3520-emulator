@@ -209,6 +209,9 @@ fn main() {
     let mut saw_dispatch = false;
     let t0 = Instant::now();
 
+    // DMM1: валидный дескриптор пула — байт +2 (>=1) требует проверка
+    // 0xC042E14A; без него дmm1excp.c вызывается по кругу.
+    cpu.mem.write8(0xC9AF_ED1A, 0xFF);
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -311,10 +314,11 @@ fn main() {
         // Венеер 0xC02D2954 (ldr pc,[pc,#-4] → 0xC0038070) затирается
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         cpu.step(!quiet && i < 60);
-        if from_main && pc == 0xC036_AB2C {
-            re_count += 1;
-            if re_count == 1 { println!("[RE1] step={} r0={:08x} r1={:08x} r2={:08x} r3={:08x} lr={:08x}", i, cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[14]); }
+        if from_main && pc == 0xC042_E114 {
+            let pd = cpu.va2pa(0xC9AF_ED18);
+            cpu.mem.write8(pd.wrapping_add(2), 0xFF);
         }
+        if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
