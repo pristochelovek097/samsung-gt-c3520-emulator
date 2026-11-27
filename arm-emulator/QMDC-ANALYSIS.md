@@ -3240,3 +3240,31 @@ text_readonly). Халт на 558870 исчез, конструкторы выз
 IRQOPEN=2111, WFI=0, не halted, PC/CPSR=0xC03E0114/0x200000FF,
 HOTPC c03e0114:199M, FIFO 'IIIIIIII', LISR нули, MMIO NAND+LCD,
 LCD commands=4 pixels=2.
+
+## Report_Error 0x6416A5 / субкод 0x0B (2026-11-27)
+
+Первый вход в 0xC0271AA0: шаг 559375, `r0=0x006416A5`,
+`LR=0xC0416E95` (BL по 0xC0416E90). Код ошибки собран в
+0xC0416EA4/0xC0416EA6 (`0x006416A3+2`).
+
+Проверка в 0xC0416E62..0xC0416EA6:
+```
+ldrb r0,[r4,#5]; ldrb r1,[r4,#4]; cmp r0,r1; bne fail
+ldrb r0,[r4]; adds r0,#1; cmp r2,r0; bne 0xC0416E96
+... → r0=0x006416A5 → bl 0xC0271AA0
+```
+На шаге 559363 `r2=0`, `r0=1` — несовпадение счётчика/байта
+в структуре по r4.
+
+MMU для VA 0xC11BFF48:
+```
+TTBR=0xC3BC4000, L1[0xC11] @0xC3BC7044 = 0xC3BCB811 (coarse)
+L2 @0xC3BCB2FC = 0xC00B000D (small page, PA base 0xC00B0000)
+PA = 0xC00BFF48
+```
+Это корректная транslация по таблицам прошивки — не баг маски
+в translate(). Поэтому копирование ctor-таблицы в PA 0xC00BFF48
+необходимо.
+
+RE=1 остаётся: причина — несовпадение байта/счётчика в структуре
+0xC9B51BA8, честный инициализатор не найден.

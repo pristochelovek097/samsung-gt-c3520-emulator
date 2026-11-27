@@ -365,6 +365,16 @@ fn main() {
         }
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
+        // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48.
+        if from_main && pc == 0xC005_72DC {
+            let pa = cpu.va2pa(0xC11B_FF44u32);
+            cpu.mem.text_readonly = false;
+            for k in 0..8u32 {
+                let w = cpu.mem.read32(0xC11B_FF44u32.wrapping_add(k*4));
+                cpu.mem.write32(pa.wrapping_add(k*4), w);
+            }
+            cpu.mem.text_readonly = true;
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
