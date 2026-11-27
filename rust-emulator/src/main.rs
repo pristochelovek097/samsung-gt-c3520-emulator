@@ -336,7 +336,7 @@ fn main() {
         // обычный возврат по LR, CPSR/SPSR не трогаем.
         if from_main && pc >= 0x1_0000 && pc < 0x4_0000 && (cpu.cpsr & 0x20) == 0 && cpu.r[14] != 0 {
             // Источник IRQ 0 → индекс 9 (системный таймер) из таблицы 0xC9AFCE4C.
-            if pc == 0x0001_0180 { cpu.r[0] = 1; }
+            if pc == 0x0001_0180 { cpu.r[0] = 0; }
             let lr = cpu.r[14];
             if lr & 1 != 0 { cpu.cpsr |= 0x20; } else { cpu.cpsr &= !0x20; }
             cpu.r[15] = lr & !1;
