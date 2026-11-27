@@ -81,7 +81,12 @@ impl<'a> Arm<'a> {
     }
 
     #[inline] fn read_reg(&self, i: u32) -> u32 {
-        if i == 15 { self.r[15].wrapping_add(4) } else { self.r[i as usize] }
+        // Чтение PC: ARM — текущая инструкция + 8 (r15 уже +4),
+        // Thumb — текущая инструкция + 4 (r15 уже +2).
+        if i == 15 {
+            if self.cpsr & 0x20 != 0 { self.r[15].wrapping_add(2) }
+            else { self.r[15].wrapping_add(4) }
+        } else { self.r[i as usize] }
     }
     #[inline] fn write_reg(&mut self, i: u32, v: u32) {
         if i == 15 { self.r[15] = v & 0xFFFF_FFFC; } else { self.r[i as usize] = v; }

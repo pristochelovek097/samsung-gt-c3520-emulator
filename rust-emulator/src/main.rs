@@ -363,6 +363,8 @@ fn main() {
             cpu.r[15] = 0xC002_0012;
             sys_open_count += 1;
         }
+        // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
+        // копируем исходные слова из ROM-образа в перемапленную страницу.
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }

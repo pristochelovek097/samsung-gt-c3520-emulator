@@ -3223,3 +3223,20 @@ VA `0xC11BFF46` (PA `0xC11BFF46`) — самый конец образа MAIN
 
 SYS_OPEN эмуляция работает (3 вызова), ASSERT_ERROR исчез,
 но do ctor-table halts на 558870.
+
+## Исправление ADD Rd,PC и таблицы конструкторов (2026-11-27)
+
+read_reg(15) в Thumb возвращал r15+4 (r15 уже addr+2) → addr+6,
+из-за чего `add r4,pc` давал 0xC11BFF4A вместо 0xC11BFF48.
+Исправлено: Thumb → r15+2, ARM → r15+4.
+
+После фикса r4=0xC11BFF48, r5=0xC11BFF5C (4-байтно выровнены).
+Но VA 0xC11BFF48 после MMU-remap транслируется в PA 0xC00BFF48,
+где лежали мусорные слова. Добавлено копирование 8 слов таблицы
+из исходного образа в перемапленную страницу (с временным снятием
+text_readonly). Халт на 558870 исчез, конструкторы вызываются.
+
+Итог 200M: RE=1 (шаг 559423, Report_Error r1=0x22 r2=0x0B),
+IRQOPEN=2111, WFI=0, не halted, PC/CPSR=0xC03E0114/0x200000FF,
+HOTPC c03e0114:199M, FIFO 'IIIIIIII', LISR нули, MMIO NAND+LCD,
+LCD commands=4 pixels=2.
