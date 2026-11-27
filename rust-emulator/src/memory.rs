@@ -140,6 +140,11 @@ impl Memory {
 
     #[inline]
     pub fn write32(&mut self, addr: u32, value: u32) {
+        // Базовый DMA: запись бита завершения/стата в 0x70004008 завершает трансфер.
+        if (addr & !3) == 0x7000_4008 && (value & 0x4000_0000) != 0
+            && (self.watch_pc == 0xC038_7500 || self.watch_pc == 0xC01C_24B4) {
+            self.lcd.frames += 1;
+        }
         // GiSPort: команда старта трансфера 0x7400213C=1 → статус завершения.
         if (addr & !3) == 0x7400_213C && (value & 0xFF) == 1 {
             self.mmio.insert(0x7400_202C, 0x8000_0600);
