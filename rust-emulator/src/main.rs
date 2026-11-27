@@ -208,9 +208,12 @@ fn main() {
     let mut saw_dispatch = false;
     let t0 = Instant::now();
 
+    cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
         let pc = cpu.r[15];
+        cpu.mem.watch_pc = pc;
+        if i == 1000 { cpu.mem.code_watch_enabled = true; }
         // HOTPC: считаем редко (раз в 4096 тактов), чтобы не тормозить цикл
         if (start_root || from_main) && (i & 4095) == 0 {
             *hist.entry(pc & !1).or_insert(0) += 4096;
@@ -307,7 +310,10 @@ fn main() {
         // нулями при инициализации канала — восстанавливаем его перед BLX.
         if from_main && pc == 0xC038_70EA { cpu.mem.write32(0xC02D_2954, 0xE51F_F004); }
         cpu.step(!quiet && i < 60);
-        if from_main && pc == 0xC036_AB2C { re_count += 1; }
+        if from_main && pc == 0xC036_AB2C {
+            re_count += 1;
+            if re_count == 1 { println!("[RE1] step={} r0={:08x} r1={:08x} r2={:08x} r3={:08x} lr={:08x}", i, cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3], cpu.r[14]); }
+        }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
         if !irq_injected && (cpu.cpsr & 0x80) == 0 {
@@ -351,6 +357,14 @@ fn main() {
         v.into_iter().take(15).map(|(pc, n)| format!("{:08x}:{}", pc, n)).collect()
     };
     println!("[HOTPC] {}", top.join(" "));
+    println!("[WATCH] hits={}", cpu.mem.watch_hits.len());
+    for &(p, a, o, n) in cpu.mem.watch_hits.iter().take(20) {
+        println!("[WATCH] pc={:08x} addr={:08x} {:08x} -> {:08x}", p, a, o, n);
+    }
+    println!("[CODEWR] count={}", cpu.mem.code_writes.len());
+    for &(p, a, o, n) in cpu.mem.code_writes.iter().take(20) {
+        println!("[CODEWR] pc={:08x} addr={:08x} {:08x} -> {:08x}", p, a, o, n);
+    }
     if from_main {
         let p = cpu.va2pa(0x0001_0180);
         print!("[IRQTABLE] va=00010180 pa={:08x}", p);

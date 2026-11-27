@@ -18,6 +18,12 @@ pub struct Memory {
     pub nand: NandController,
     pub lcd: LcdController,
     pub io_seen: HashMap<u32, (u32, u32)>, // addr -> (reads, writes)
+    // Диагностика записей: точный адрес-ловушка и защита секции кода.
+    pub watch_addr: u32,
+    pub watch_pc: u32,
+    pub watch_hits: Vec<(u32, u32, u32, u32)>,
+    pub code_watch_enabled: bool,
+    pub code_writes: Vec<(u32, u32, u32, u32)>,
 }
 
 impl Memory {
@@ -31,6 +37,8 @@ impl Memory {
             nand: NandController::new(dir),
             lcd: LcdController::new(),
             io_seen: HashMap::new(),
+            watch_addr: 0, watch_pc: 0, watch_hits: Vec::new(),
+            code_watch_enabled: false, code_writes: Vec::new(),
         }
     }
 
@@ -64,6 +72,35 @@ impl Memory {
     }
 
     #[inline]
+    fn note_write(&mut self, addr: u32, old: u32, new: u32) {
+        if old == new { return; }
+        if self.watch_addr != 0 && (addr == self.watch_addr || (addr & !3) == (self.watch_addr & !3)) {
+            if self.watch_hits.len() < 64 {
+                self.watch_hits.push((self.watch_pc, addr, old, new));
+            }
+        }
+        if self.code_watch_enabled && addr >= 0xC000_0000 && addr < 0xC11C_0000 {
+            if self.code_writes.len() < 64 {
+                self.code_writes.push((self.watch_pc, addr, old, new));
+            }
+        }
+    }
+
+    #[inline]
+    pub fn read32_raw(&self, addr: u32) -> u32 {
+        let a = addr & !3;
+        if let Some((bank, o)) = self.flat_idx(a) {
+            let sl = match bank { 0 => &self.itcm, 1 => &self.dram, _ => &self.sram };
+            return u32::from_le_bytes([sl[o], sl[o+1], sl[o+2], sl[o+3]]);
+        }
+        if let Some(p) = self.pages.get(&(a >> 12)) {
+            let o = (a & 4095) as usize;
+            if o + 4 <= 4096 { return u32::from_le_bytes([p[o], p[o+1], p[o+2], p[o+3]]); }
+        }
+        0
+    }
+
+    #[inline]
     pub fn read32(&mut self, addr: u32) -> u32 {
         if addr == 0x7400_202C { return 0x200; }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 {
@@ -92,6 +129,8 @@ impl Memory {
 
     #[inline]
     pub fn write32(&mut self, addr: u32, value: u32) {
+        let old = if self.watch_addr != 0 || self.code_watch_enabled { self.read32_raw(addr) } else { 0 };
+        self.note_write(addr & !3, old, value);
         if self.lcd_port(addr) { self.lcd.write(addr, value); self.io_seen.entry(addr & !3).or_insert((0,1)).1 += 1; return; }
         if (addr & !3) == 0x7000_2018 { return; } // auto-clear go bit
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 {
