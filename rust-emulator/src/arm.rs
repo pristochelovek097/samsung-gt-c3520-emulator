@@ -603,25 +603,22 @@ impl<'a> Arm<'a> {
                         a = a.wrapping_add(4);
                     }
                 }
-                if l && restore_spsr {
-                    self.cpsr = self.spsr & 0xF800_00FF;
-                    // Возврат из исключения переключает банк SP/LR на
-                    // восстановленный режим (иначе SP остаётся SVC-стеком).
-                    let om = Self::bank_index(self.cpsr & 0x1F);
-                    let cur = Self::bank_index((self.cpsr & 0x1F));
-                    let _ = cur;
-                    // Текущий (исключённый) режим был до восстановления CPSR:
-                    // сохраняем его SP/LR в банк.
-                    let exc_mode = match om { 3 => 0x13, 4 => 0x17, 2 => 0x12, 1 => 0x11, 5 => 0x1B, _ => 0x1F };
-                    let eb = Self::bank_index(exc_mode);
-                    self.banked[eb][0] = self.r[13];
-                    self.banked[eb][1] = self.r[14];
-                    self.r[13] = if self.svc_entry_sp != 0 { self.svc_entry_sp } else { self.banked[om][0] };
-                    self.r[14] = self.banked[om][1];
-                }
+                // Writeback в SP текущего (исключённого) режима ДОЛЖEN
+                // произойти до переключения банка при LDM {...,pc}^.
                 if w {
                     let wb = if u { base.wrapping_add(4 * n) } else { base.wrapping_sub(4 * n) };
                     self.write_reg(rn, wb);
+                }
+                if l && restore_spsr {
+                    let exc_mode = self.cpsr & 0x1F;
+                    let eb = Self::bank_index(exc_mode);
+                    self.banked[eb][0] = self.r[13];
+                    self.banked[eb][1] = self.r[14];
+                    self.cpsr = self.spsr & 0xF800_00FF;
+                    let nm = self.cpsr & 0x1F;
+                    let nb = Self::bank_index(nm);
+                    self.r[13] = self.banked[nb][0];
+                    self.r[14] = self.banked[nb][1];
                 }
                 return;
             }
