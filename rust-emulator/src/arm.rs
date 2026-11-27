@@ -39,6 +39,7 @@ pub struct Arm<'a> {
     pub fault_far: u32,
     pub fault_fsr: u32,
     pub abort_first: Vec<(u64, u32, u32, u32)>,
+    pub svc_entry_sp: u32,
     tlb_va_tag: i64,
     tlb_pa_base: u32,
     tlb_mask: u32,
@@ -55,7 +56,7 @@ impl<'a> Arm<'a> {
             thumb_bl_pending: false, irq_count: 0, irq_limit: 3, zero_run: 0, msr_dbg: 0, bad_call_returns: 0,
             trace_all: false, wfi_count: 0, irq_open_steps: 0, data_aborts: 0,
             prefetch_aborts: 0, strict_aborts: false, after_zero_fill: false,
-            strict_mmu: false, cur_insn_pc: 0, fault_far: 0, fault_fsr: 0, abort_first: Vec::new(),
+            strict_mmu: false, cur_insn_pc: 0, fault_far: 0, fault_fsr: 0, abort_first: Vec::new(), svc_entry_sp: 0,
             tlb_va_tag: -1, tlb_pa_base: 0, tlb_mask: 0xFFF,
             tlb_cache: vec![(0xFFFF_FFFF, 0); 256],
             fetch_pc: 0xFFFF_FFFF, fetch_pa: 0, fetch_insn: 0,
@@ -141,6 +142,7 @@ impl<'a> Arm<'a> {
 
     fn raise_svc(&mut self) {
         let ret = self.r[15];
+        self.svc_entry_sp = self.r[13];
         self.spsr = self.cpsr;
         self.switch_mode(0x13);
         self.cpsr |= 0x80;
@@ -601,7 +603,22 @@ impl<'a> Arm<'a> {
                         a = a.wrapping_add(4);
                     }
                 }
-                if l && restore_spsr { self.cpsr = self.spsr & 0xF800_00FF; }
+                if l && restore_spsr {
+                    self.cpsr = self.spsr & 0xF800_00FF;
+                    // Возврат из исключения переключает банк SP/LR на
+                    // восстановленный режим (иначе SP остаётся SVC-стеком).
+                    let om = Self::bank_index(self.cpsr & 0x1F);
+                    let cur = Self::bank_index((self.cpsr & 0x1F));
+                    let _ = cur;
+                    // Текущий (исключённый) режим был до восстановления CPSR:
+                    // сохраняем его SP/LR в банк.
+                    let exc_mode = match om { 3 => 0x13, 4 => 0x17, 2 => 0x12, 1 => 0x11, 5 => 0x1B, _ => 0x1F };
+                    let eb = Self::bank_index(exc_mode);
+                    self.banked[eb][0] = self.r[13];
+                    self.banked[eb][1] = self.r[14];
+                    self.r[13] = if self.svc_entry_sp != 0 { self.svc_entry_sp } else { self.banked[om][0] };
+                    self.r[14] = self.banked[om][1];
+                }
                 if w {
                     let wb = if u { base.wrapping_add(4 * n) } else { base.wrapping_sub(4 * n) };
                     self.write_reg(rn, wb);
