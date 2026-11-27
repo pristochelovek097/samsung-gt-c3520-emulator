@@ -206,6 +206,7 @@ fn main() {
     let mut out_iters = 0u32;
     let mut re_count = 0u32;
     let mut timer_irqs = 0u64;
+    let mut nand_id_cmd = false;
     let mut gis_count = 0u32;
     let mut vec_restores = 0u64;
     let mut dbg_once = false;
@@ -381,12 +382,19 @@ fn main() {
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
         // GiSPort: при регистрации трансфера аппарат выставляет бит 10 статуса.
-        if from_main && gis_count < 3 && pc == 0xC041_B2F8 && cpu.r[4] == 0xCA76_8240 {
+        if from_main && gis_count < 4 && pc == 0xC041_B2F8 && cpu.r[4] == 0xCA76_8240 {
             gis_count += 1;
             cpu.mem.set_mmio(0x7400_202C, 0x8000_0600);
         }
         // Честный вызов callback'а прошивкой снимает бит complete.
         if from_main && pc == 0xC00C_C2E0 { cpu.mem.set_mmio(0x7400_202C, 0x8000_0200); }
+        // NAND Read ID (0x90): DMA завершился — записываем канонический ID в буфер.
+        if from_main && pc == 0xC009_60E4 { nand_id_cmd = true; }
+        if from_main && nand_id_cmd && pc == 0xC009_6172 {
+            nand_id_cmd = false;
+            let p = cpu.va2pa(cpu.r[3]);
+            for (k,b) in [0xECu8,0xD3,0x10,0x45,0x00].iter().enumerate() { cpu.mem.write8(p.wrapping_add(k as u32), *b as u32); }
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
