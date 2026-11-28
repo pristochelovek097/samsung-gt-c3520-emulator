@@ -264,6 +264,24 @@ fn main() {
         // деление на ноль -> fatal error 2 "Abnormal termination".
         let p = cpu.va2pa(0xC9EF_740D); cpu.mem.write8(p, 4);
     }
+    if workarounds {
+        // mgrpaging0init.c: драйвер читает 0x68-байтные структуры тома
+        // из RAM-образа 0xC9EF5ACC + block*0x800 и копирует их через
+        // 0xC9EF7384. Заполняем подлинной сигнатурой и чексуммой.
+        let base = cpu.va2pa(0xC9EF_5ACC);
+        let extra = cpu.va2pa(0xC9EF_7384);
+        for blk in 0u32..0x400u32 {
+            let p = if blk == 0 { extra } else { base.wrapping_add(blk.wrapping_mul(0x800)) };
+            cpu.mem.write32(p, 0x0102_0304);
+            cpu.mem.write32(p.wrapping_add(8), 1);
+            cpu.mem.write32(p.wrapping_add(0x64), 0x0102_0304);
+            let mut sum = 0u32;
+            for k in 0..0x68u32 { sum = sum.wrapping_add(cpu.mem.read8(p.wrapping_add(k)) as u32); }
+            cpu.mem.write8(p.wrapping_add(0x60), (0u32.wrapping_sub(sum)) as u32);
+        }
+    }
+    let mut pg_src = 0u32;
+    let mut pg_dst = 0u32;
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
@@ -477,6 +495,16 @@ fn main() {
             for st in news { println!("[FW-LOG] step={} pc={:08x} \"{}\"", i, pc, st); }
         }
         if (pc & !1) == 0xC002_B52A { idle_hits += 1; }
+        // C007A570: операция драйвера 0x12 (чтение 0x800 байт тома).
+        // Возвращаем успех и переносим структуру из RAM-образа в буфер.
+        if from_main && workarounds && pc == 0xC007_A570 { pg_src = cpu.r[0]; pg_dst = cpu.r[1]; }
+        if from_main && workarounds && pc == 0xC007_A57C {
+            cpu.r[0] = 0;
+            let blk = pg_src >> 17;
+            let src = cpu.va2pa(0xC9EF_5ACCu32.wrapping_add(blk.wrapping_mul(0x800)));
+            let dst = cpu.va2pa(pg_dst);
+            for k in 0..0x800u32 { let b = cpu.mem.read8(src.wrapping_add(k)); cpu.mem.write8(dst.wrapping_add(k), b); }
+        }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }

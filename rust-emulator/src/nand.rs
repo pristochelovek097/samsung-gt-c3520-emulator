@@ -153,6 +153,7 @@ impl NandController {
             for i in 0..2048usize { self.fifo[i] = self.read_image(page.wrapping_add(i as u32)); }
             for i in 0..64usize { self.fifo[2048+i] = 0xFF; }
             self.fifo_pos = 0; self.pio_remaining = 2112; self.pio_done = false;
+            self.irq_delay = 120; self.irq_pending = true;
         } else {
             self.nand_cmd = v;
             if v != 0x00 && v != 0x04 { self.irq_delay = 120; self.irq_pending = true; }
