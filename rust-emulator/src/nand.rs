@@ -18,6 +18,7 @@ pub struct NandController {
     /// Операция завершена: бит 9 (0x200) статуса 0x7400202C.
     pub pio_done: bool,
     pub irq_pending: bool,
+    pub active: bool,
     nand_cmd: u8,
     id_idx: usize,
 }
@@ -26,7 +27,7 @@ impl NandController {
     pub fn new(dir: &str) -> Self {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
-            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, nand_cmd: 0, id_idx: 0,
+            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, nand_cmd: 0, id_idx: 0,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -129,6 +130,10 @@ impl NandController {
 
     /// Прозрачный перехват записи в 0x74002020 (данные/команды NAND).
     pub fn on_data_write(&mut self, v: u8) {
+        if v == 0xFF || v == 0x90 || v == 0x70 || v == 0x30 {
+            self.active = true;
+            eprintln!("[NANDCMD] cmd={:02x} pio_rem={}", v, self.pio_remaining);
+        }
         if v == 0xFF {  // RESET
             self.pio_remaining = 0; self.pio_done = true; self.irq_pending = true;
         } else if v == 0x90 {  // READ ID

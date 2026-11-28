@@ -115,14 +115,16 @@ impl Memory {
     #[inline]
     pub fn read32(&mut self, addr: u32) -> u32 {
         if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) {
-            if addr == 0x7400_2020 {
-                if self.nand.pio_remaining > 0 {
+            if self.nand.active {
+                if addr == 0x7400_2020 && self.nand.pio_remaining > 0 {
                     let v = self.nand.read(crate::nand::BASE) & 0xFF;
                     return v | ((v) << 8) | ((v) << 16) | ((v) << 24);
                 }
-            }
-            if addr == 0x7400_202C && self.nand.pio_remaining > 0 {
-                return 0x8000_0200u32;
+                if addr == 0x7400_202C {
+                    let base = *self.mmio.get(&0x7400_202C).unwrap_or(&0x8000_0200);
+                    if self.nand.pio_remaining > 0 { return (base & !0x400) | 0x200; }
+                    return base | 0x600;
+                }
             }
         }
         if addr == 0x7400_202C {
@@ -209,7 +211,7 @@ impl Memory {
     #[inline]
     pub fn read16(&mut self, addr: u32) -> u32 {
         if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed)
-           && addr == 0x7400_2020 && self.nand.pio_remaining >= 2 {
+           && self.nand.active && addr == 0x7400_2020 && self.nand.pio_remaining >= 2 {
             let b0 = self.nand.read(crate::nand::BASE) & 0xFF;
             let b1 = self.nand.read(crate::nand::BASE) & 0xFF;
             return b0 | (b1 << 8);
@@ -245,7 +247,7 @@ impl Memory {
     #[inline]
     pub fn read8(&mut self, addr: u32) -> u32 {
         if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed)
-           && addr == 0x7400_2020 && self.nand.pio_remaining > 0 {
+           && self.nand.active && addr == 0x7400_2020 && self.nand.pio_remaining > 0 {
             return self.nand.read(crate::nand::BASE) & 0xFF;
         }
         if addr == 0xC1B5_1B40 { return 2; }
