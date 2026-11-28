@@ -154,6 +154,11 @@ impl Memory {
         if (addr & !3) >= 0x7000_1000 && (addr & !3) <= 0x7000_1050 {
             self.mmio.insert(addr & !3, value);
         }
+        // Уровневая модель INTC: подтверждение NAND/DMA по 0x7400202C или
+        // 0x74008004/08 снимает активный источник src=17 в 0x7000102C.
+        if (addr & !3) == 0x7400_202C || (addr & !3) == 0x7400_8004 || (addr & !3) == 0x7400_8008 {
+            self.mmio.insert(0x7000_102C, 0);
+        }
         let old = if self.watch_addr != 0 || self.code_watch_enabled { self.read32_raw(addr) } else { 0 };
         self.note_write(addr & !3, old, value);
         if ((addr >= 0x7800_0000 && addr < 0x7802_0000) || (addr >= 0x7000_0000 && addr < 0x7002_0000))
