@@ -19,6 +19,7 @@ pub struct NandController {
     pub pio_done: bool,
     pub irq_pending: bool,
     pub active: bool,
+    pub irq_delay: u32,
     nand_cmd: u8,
     id_idx: usize,
 }
@@ -27,7 +28,7 @@ impl NandController {
     pub fn new(dir: &str) -> Self {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
-            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, nand_cmd: 0, id_idx: 0,
+            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, irq_delay: 0, nand_cmd: 0, id_idx: 0,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -135,7 +136,8 @@ impl NandController {
             eprintln!("[NANDCMD] cmd={:02x} pio_rem={}", v, self.pio_remaining);
         }
         if v == 0xFF {  // RESET
-            self.pio_remaining = 0; self.pio_done = true; self.irq_pending = true;
+            self.pio_remaining = 0; self.pio_done = true;
+            self.irq_delay = 120;  // IRQ позже: драйвер успеет инициализировать колбек
         } else if v == 0x90 {  // READ ID
             let id = [0xECu8,0xF1,0x00,0x95,0x40,0x00];
             for (i,&b) in id.iter().enumerate() { self.fifo[i] = b; }
@@ -177,7 +179,7 @@ impl NandController {
                 self.fifo_pos += 1;
                 if self.pio_remaining > 0 {
                     self.pio_remaining -= 1;
-                    if self.pio_remaining == 0 { self.pio_done = true; }
+                    if self.pio_remaining == 0 { self.pio_done = true; self.irq_delay = 120; }
                 }
                 v
             }
