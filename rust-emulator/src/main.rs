@@ -505,6 +505,29 @@ fn main() {
             let dst = cpu.va2pa(pg_dst);
             for k in 0..0x800u32 { let b = cpu.mem.read8(src.wrapping_add(k)); cpu.mem.write8(dst.wrapping_add(k), b); }
         }
+        // C01547CC: вторая форма операции 0x12 (чтение 0x300 байт
+        // paging-таблицы) — драйвер в эмуляторе возвращает ошибку.
+        // Возвращаем успех и переносим структуру тома из RAM-образа.
+        if from_main && workarounds && pc == 0xC015_47FA {
+            cpu.r[0] = 0;
+            let src = cpu.va2pa(0xC9EF_5ACC);
+            let dst = cpu.va2pa(0xC9EF_6B40);
+            for k in 0..0x800u32 { let b = cpu.mem.read8(src.wrapping_add(k)); cpu.mem.write8(dst.wrapping_add(k), b); }
+        }
+        // C0147506: таблица paging-дескрипторов 0xCA75EB1C (шаг 0x18).
+        // Заполняем валидный дескриптор: адрес/длина в 0x20000..0x7D20000,
+        // флаг 8 (бит 3) и тип 0x20 из таблицы поддерживаемых типов.
+        if from_main && workarounds && (pc & !1) == 0xC009_5D4A {
+            let p = cpu.va2pa(0xCA75_EB1C);
+            if cpu.mem.read32(p) == 0 {
+                cpu.mem.write32(p, 0x0002_0000);
+                cpu.mem.write32(p.wrapping_add(4), 0x0002_0000);
+                cpu.mem.write32(p.wrapping_add(8), 8);
+                cpu.mem.write32(p.wrapping_add(0xC), 0x20);
+            }
+        }
+        // C0063108: проверка геометрии раздела (0xED) — эмулируем успех.
+        if from_main && workarounds && pc == 0xC006_020E { cpu.r[0] = 0; }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
