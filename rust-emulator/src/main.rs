@@ -396,6 +396,7 @@ fn main() {
         // Вызов callback'а прошивкой消费ирует завершение — снимаем бит 10.
         if from_main && workarounds && cpu.mem.nand.irq_pending {
             cpu.mem.nand.irq_pending = false;
+            let g=cpu.va2pa(0xCA76_8290); cpu.mem.write8(g, 1);
             cpu.mem.set_mmio(0x7000_102C, 17);
             cpu.inject_irq();
         }
