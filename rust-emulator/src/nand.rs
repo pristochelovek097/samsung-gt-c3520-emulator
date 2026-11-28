@@ -126,6 +126,12 @@ impl NandController {
             0x0C0 => 0x16C9,
             0x408 => 0xFFFF_FFFF,
             0x100 => 0,
+            // PIO-чтение NAND: 0x74002020 выдаёт байты защёлкнутой страницы.
+            0x20 => {
+                let v = self.fifo[self.fifo_pos & 2047] as u32;
+                self.fifo_pos += 1;
+                v
+            }
             _ => {
                 if off >= 0x800 && off < 0x800 + 2048 {
                     let v = self.fifo[self.fifo_pos & 2047] as u32;
