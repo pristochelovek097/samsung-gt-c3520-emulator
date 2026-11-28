@@ -22,7 +22,24 @@ impl NandController {
             column: 0, row: 0, fifo_pos: 0, status14: 3,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
-        n.add(0x000000, vec![0xFF; 0x20000]);
+        // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
+        // Заголовок файла SMDHEAD0 занимает 0x120 байт; дальше идёт страница 0
+        // NAND с magic "EFSPARTI" (0x134) и 12 записями разделов по 0x20 байт.
+        let smd = Path::new(dir).join("C3520XFLJ1_C352WOXELJ1.smd");
+        let block0 = {
+            let mut b = vec![0xFFu8; 0x20000];
+            if let Ok(mut f) = fs::File::open(&smd) {
+                use std::io::Read;
+                let mut page = [0u8; 0x2000];
+                let mut tmp = [0u8; 0x2000 + 0x120];
+                if f.read(&mut tmp).unwrap_or(0) > 0x120 {
+                    page.copy_from_slice(&tmp[0x120..]);
+                    b[..0x2000].copy_from_slice(&page);
+                }
+            }
+            b
+        };
+        n.add(0x000000, block0);
         n.add(0x020000, load_cla(&bin, "C3520XELaFleur.bmp", 0x20000));
         n.add(0x040000, load_raw(&bin, "C3520XELaFleur.bootlcdact", 0x20000));
         n.add(0x060000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_CB_ROOT", 0x20000));
@@ -40,7 +57,7 @@ impl NandController {
         if !data.is_empty() { self.sparse.push((off, data)); }
     }
 
-    fn read_image(&self, addr: u32) -> u8 {
+    pub fn read_image(&self, addr: u32) -> u8 {
         for (o, b) in &self.sparse {
             if addr >= *o {
                 let i = (addr - *o) as usize;
