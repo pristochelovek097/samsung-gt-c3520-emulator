@@ -391,7 +391,11 @@ fn main() {
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
         // Вызов callback'а прошивкой消费ирует завершение — снимаем бит 10.
-        if from_main && pc == 0xC00C_C2E0 { cpu.mem.set_mmio(0x7400_202C, 0x8000_0200); }
+        if from_main && cpu.mem.nand.irq_pending {
+            cpu.mem.nand.irq_pending = false;
+            cpu.mem.set_mmio(0x7000_102C, 17);
+            cpu.inject_irq();
+        }
         // NAND Read ID (0x90): DMA завершился — записываем канонический ID в буфер.
         if from_main && pc == 0xC009_60E4 { nand_id_cmd = true; }
         if from_main && nand_id_cmd && pc == 0xC009_6172 {

@@ -17,13 +17,16 @@ pub struct NandController {
     pub pio_remaining: usize,
     /// Операция завершена: бит 9 (0x200) статуса 0x7400202C.
     pub pio_done: bool,
+    pub irq_pending: bool,
+    nand_cmd: u8,
+    id_idx: usize,
 }
 
 impl NandController {
     pub fn new(dir: &str) -> Self {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
-            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false,
+            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, nand_cmd: 0, id_idx: 0,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -164,6 +167,21 @@ impl NandController {
         let off = addr.wrapping_sub(BASE);
         if off > 0xFFFF { return; }
         match off {
+            0x2C => { self.irq_pending = false; }  // W1C: сброс активного IRQ
+            0x20 => {
+                let v = value & 0xFF;
+                if v == 0xFF {   // RESET
+                    self.pio_remaining = 0; self.pio_done = true;
+                    self.irq_pending = true;
+                } else if v == 0x90 {  // READ ID
+                    self.nand_cmd = 0x90;
+                    let id = [0xECu8,0xF1,0x00,0x95,0x40,0x00,0x00,0x00];
+                    for (i,&b) in id.iter().enumerate() { self.fifo[i] = b; }
+                    self.fifo_pos = 0; self.pio_remaining = 6; self.pio_done = false;
+                } else if self.nand_cmd == 0x90 {
+                    self.id_idx += 1;
+                }
+            }
             0x000 => self.command = value & 0xFF,
             0x004 => { self.column = value & 0xFFF; self.fifo_pos = 0; }
             0x008 => self.row = value & 0xFFFF,
