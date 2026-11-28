@@ -205,6 +205,7 @@ fn main() {
     let mut out_iters = 0u32;
     let mut re_count = 0u32;
     let mut timer_irqs = 0u64;
+    let mut dump_seen = false;
     let mut nand_id_cmd = false;
     let mut vec_restores = 0u64;
     let mut dbg_once = false;
@@ -389,6 +390,23 @@ fn main() {
             nand_id_cmd = false;
             let p = cpu.va2pa(cpu.r[3]);
             for (k,b) in [0xECu8,0xD3,0x10,0x45,0x00].iter().enumerate() { cpu.mem.write8(p.wrapping_add(k as u32), *b as u32); }
+        }
+        // Диагностика аварийного дампера SysDump (файл/строка/аргументы).
+        if from_main && !dump_seen && (pc == 0xC045_7084 || pc == 0xC046_423C) {
+            dump_seen = true;
+            println!("[DUMP] step={} pc={:08x} lr={:08x} sp={:08x} cpsr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x}", i,pc,cpu.r[14],cpu.r[13],cpu.cpsr,cpu.r[0],cpu.r[1],cpu.r[2],cpu.r[3]);
+            for &r in &[0usize,1,2,3] {
+                let v = cpu.r[r];
+                if v >= 0xC000_0000 && v < 0xC400_0000 {
+                    let pv = cpu.va2pa(v); let mut st=Vec::new();
+                    for k in 0..64u32 { let c=cpu.mem.read8(pv.wrapping_add(k)) as u8; if c==0 || c>0x7e {break;} st.push(c); }
+                    if !st.is_empty() { println!("[DUMPSTR] r{}={:08x} '{}'", r, v, String::from_utf8_lossy(&st)); }
+                }
+            }
+            let psp = cpu.va2pa(cpu.r[13]); let mut raw=Vec::new();
+            for k in 0..0x120u32 { raw.push(cpu.mem.read8(psp.wrapping_add(k)) as u8); }
+            let txt: String = raw.iter().map(|&c| if (0x20..=0x7e).contains(&c) { c as char } else { '.' }).collect();
+            println!("[DUMPSTACK] {}", txt);
         }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
