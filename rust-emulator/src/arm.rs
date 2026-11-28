@@ -404,7 +404,17 @@ impl<'a> Arm<'a> {
         self.shift(value, (insn >> 5) & 3, amount)
     }
 
-    pub fn inject_irq(&mut self) { if !self.halted { let pc = self.r[15]; self.raise_irq(pc); } }
+    /// Вектор IRQ прошивки (0xC0A96454) начинается с `sub lr, lr, #4`:
+    /// обработчик ожидает аппаратное LR_irq = адрес_возобновления + 4.
+    /// `r[15]` здесь — адрес ещё не выполненной инструкции, поэтому передаём
+    /// +4, иначе обработчик вернётся на 4 байта раньше и повторно выполнит
+    /// предыдущую инструкцию (например `movs r4,r0` по 0xC035CB62).
+    pub fn inject_irq(&mut self) {
+        if !self.halted {
+            let pc = self.r[15].wrapping_add(4);
+            self.raise_irq(pc);
+        }
+    }
 
     pub fn step(&mut self, trace: bool) {
         if self.halted { return; }
