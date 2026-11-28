@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+use minifb::{Key, Window, WindowOptions};
 
 fn parse_u32(s: &str) -> u32 {
     let s = s.trim_start_matches("0x");
@@ -104,6 +105,13 @@ fn main() {
     let start_root = args.iter().any(|a| a == "--start-root");
     let from_main = args.iter().any(|a| a == "--from-main");
     let gui = args.iter().any(|a| a == "--gui");
+    let mut window: Option<Window> = if gui {
+        Window::new("GT-C3520 LCD", 240, 320, WindowOptions {
+            scale: minifb::Scale::X2, ..WindowOptions::default()
+        }).ok()
+    } else { None };
+    let mut fb: Vec<u32> = vec![0; 240 * 320];
+    let mut gui_open = gui && window.is_some();
     let skip_log = args.iter().any(|a| a == "--skip-log");
 
     let boot_path = Path::new(&dir).join("C3520XFLJ1_BIN/C3520XELaFleur.bootloader");
@@ -412,8 +420,20 @@ fn main() {
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
         if pc == 0xC046_0FF8 && !saw_dispatch { saw_dispatch = true; println!("[DISPATCH] step={}", i); }
-        if gui && i % 2000 == 0 && i > 0 {
-            // в Rust-порту GUI сохраняет кадр; живое окно опционально
+        if gui_open && i % 2000 == 0 && i > 0 {
+            if let Some(ref mut w) = window {
+                if !w.is_open() || w.is_key_down(Key::Escape) {
+                    gui_open = false;
+                } else {
+                    for (d, &p) in fb.iter_mut().zip(cpu.mem.lcd.frame.iter()) {
+                        let r = ((p >> 11) & 0x1F) as u32;
+                        let g = ((p >> 5) & 0x3F) as u32;
+                        let b = (p & 0x1F) as u32;
+                        *d = (r << 19) | (g << 10) | b;
+                    }
+                    let _ = w.update_with_buffer(&fb, 240, 320);
+                }
+            }
         }
     }
     let elapsed = t0.elapsed().as_secs_f64();
