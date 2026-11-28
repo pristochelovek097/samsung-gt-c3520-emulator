@@ -55,7 +55,12 @@ impl NandController {
         svc[0x64..0x68].copy_from_slice(&0x0102_0304u32.to_le_bytes());
         let sum: u32 = svc[..0x68].iter().map(|&x| x as u32).sum();
         svc[0x60] = ((0u32).wrapping_sub(sum)) as u8;   // сумма 0x68 байт == 0 (mod 256)
-        n.add(0x07FE0000, svc);
+        // 0xC00605AC сканирует блоки 0x3EA..0x3FF; каждая итерация читает
+        // страницу в 0xC9EF6B40 и копирует 0x68 байт в 0xC9EF5ACC перед
+        // проверкой 0xC007A528. All these blocks must carry the structure.
+        for blk in 0x3EAu32..=0x3FFu32 {
+            n.add(blk.wrapping_shl(0x11), svc.clone());
+        }
         n
     }
 
