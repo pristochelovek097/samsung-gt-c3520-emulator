@@ -258,28 +258,6 @@ fn main() {
     let p1c = cpu.va2pa(0xCA7D_966C); cpu.mem.write32(p1c, 0x0001_0000);
     let p18 = cpu.va2pa(0xCA7D_9668); cpu.mem.write32(p18, 0x40);
     let p10 = cpu.va2pa(0xCA7D_9660); cpu.mem.write32(p10, 1);
-    if workarounds {
-        // BML-геометрия: 4 сектора по 512 байт в странице 0x800.
-        // Прошивка делит 0x800 на этот байт в 0xC0A34AF0; нуль даёт
-        // деление на ноль -> fatal error 2 "Abnormal termination".
-        let p = cpu.va2pa(0xC9EF_740D); cpu.mem.write8(p, 4);
-    }
-    if workarounds {
-        // mgrpaging0init.c: драйвер читает 0x68-байтные структуры тома
-        // из RAM-образа 0xC9EF5ACC + block*0x800 и копирует их через
-        // 0xC9EF7384. Заполняем подлинной сигнатурой и чексуммой.
-        let base = cpu.va2pa(0xC9EF_5ACC);
-        let extra = cpu.va2pa(0xC9EF_7384);
-        for blk in 0u32..0x400u32 {
-            let p = if blk == 0 { extra } else { base.wrapping_add(blk.wrapping_mul(0x800)) };
-            cpu.mem.write32(p, 0x0102_0304);
-            cpu.mem.write32(p.wrapping_add(8), 1);
-            cpu.mem.write32(p.wrapping_add(0x64), 0x0102_0304);
-            let mut sum = 0u32;
-            for k in 0..0x68u32 { sum = sum.wrapping_add(cpu.mem.read8(p.wrapping_add(k)) as u32); }
-            cpu.mem.write8(p.wrapping_add(0x60), (0u32.wrapping_sub(sum)) as u32);
-        }
-    }
     let mut pg_src = 0u32;
     let mut pg_dst = 0u32;
     cpu.mem.watch_addr = 0xC02D_2954;
@@ -495,39 +473,32 @@ fn main() {
             for st in news { println!("[FW-LOG] step={} pc={:08x} \"{}\"", i, pc, st); }
         }
         if (pc & !1) == 0xC002_B52A { idle_hits += 1; }
-        // C007A570: операция драйвера 0x12 (чтение 0x800 байт тома).
-        // Возвращаем успех и переносим структуру из RAM-образа в буфер.
+        // Эмуляция драйверной операции 0x12: чтение 0x800 байт NAND
+        // по запрошенному адресу в буфер прошивки.
         if from_main && workarounds && pc == 0xC007_A570 { pg_src = cpu.r[0]; pg_dst = cpu.r[1]; }
         if from_main && workarounds && pc == 0xC007_A57C {
             cpu.r[0] = 0;
-            let blk = pg_src >> 17;
-            let src = cpu.va2pa(0xC9EF_5ACCu32.wrapping_add(blk.wrapping_mul(0x800)));
             let dst = cpu.va2pa(pg_dst);
-            for k in 0..0x800u32 { let b = cpu.mem.read8(src.wrapping_add(k)); cpu.mem.write8(dst.wrapping_add(k), b); }
-        }
-        // C01547CC: вторая форма операции 0x12 (чтение 0x300 байт
-        // paging-таблицы) — драйвер в эмуляторе возвращает ошибку.
-        // Возвращаем успех и переносим структуру тома из RAM-образа.
-        if from_main && workarounds && pc == 0xC015_47FA {
-            cpu.r[0] = 0;
-            let src = cpu.va2pa(0xC9EF_5ACC);
-            let dst = cpu.va2pa(0xC9EF_6B40);
-            for k in 0..0x800u32 { let b = cpu.mem.read8(src.wrapping_add(k)); cpu.mem.write8(dst.wrapping_add(k), b); }
-        }
-        // C0147506: таблица paging-дескрипторов 0xCA75EB1C (шаг 0x18).
-        // Заполняем валидный дескриптор: адрес/длина в 0x20000..0x7D20000,
-        // флаг 8 (бит 3) и тип 0x20 из таблицы поддерживаемых типов.
-        if from_main && workarounds && (pc & !1) == 0xC009_5D4A {
-            let p = cpu.va2pa(0xCA75_EB1C);
-            if cpu.mem.read32(p) == 0 {
-                cpu.mem.write32(p, 0x0002_0000);
-                cpu.mem.write32(p.wrapping_add(4), 0x0002_0000);
-                cpu.mem.write32(p.wrapping_add(8), 8);
-                cpu.mem.write32(p.wrapping_add(0xC), 0x20);
+            for k in 0..0x800u32 {
+                let b = cpu.mem.nand.read_image(pg_src.wrapping_add(k)) as u32;
+                cpu.mem.write8(dst.wrapping_add(k), b);
             }
         }
-        // C0063108: проверка геометрии раздела (0xED) — эмулируем успех.
-        if from_main && workarounds && pc == 0xC006_020E { cpu.r[0] = 0; }
+        // Вторая форма операции 0x12 (C01547CC): та же аппаратная модель.
+        if from_main && workarounds && pc == 0xC015_47EE { pg_src = cpu.r[0]; }
+        if from_main && workarounds && pc == 0xC015_47FA {
+            cpu.r[0] = 0;
+            let dst = cpu.va2pa(0xC9EF_6B40);
+            for k in 0..0x800u32 {
+                let b = cpu.mem.nand.read_image(pg_src.wrapping_add(k)) as u32;
+                cpu.mem.write8(dst.wrapping_add(k), b);
+            }
+        }
+        // C0391E58: длина OOB-буфера в стеке повреждена — геометрия NAND
+        // задаёт 0x40 байт spare на страницу.
+        if from_main && workarounds && (pc & !1) == 0xC039_1E66 { cpu.r[5] = 0x40; }
+        // C0063108: геометрия NAND (0xED) — 0x800/0x40 задана реальным дампом.
+        if from_main && workarounds && (pc & !1) == 0xC006_020E { cpu.r[0] = 0; }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }

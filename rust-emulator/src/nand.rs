@@ -24,6 +24,10 @@ pub struct NandController {
     pub irq_servicing: bool,
     nand_cmd: u8,
     id_idx: usize,
+    /// Реальный образ NAND из .smd: страницы 2048 байт + 64 байта OOB.
+    smd_pages: Vec<[u8; 2048]>,
+    smd_spare: Vec<[u8; 64]>,
+    smd_count: usize,
 }
 
 impl NandController {
@@ -31,6 +35,7 @@ impl NandController {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2112], command: 0xFF,
             column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, irq_delay: 0, irq_servicing: false, nand_cmd: 0, id_idx: 0,
+            smd_pages: Vec::new(), smd_spare: Vec::new(), smd_count: 0,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -50,6 +55,24 @@ impl NandController {
             }
             b
         };
+        // Реальный дамп NAND: SMDHEAD0 0x800 байт, далее 30208 страниц
+        // 2048 байт данных + 64 байта OOB (делимость 0x800/0x840).
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) {
+            let smd_all = fs::read(&smd).unwrap_or_default();
+            if smd_all.len() > 0x800 {
+                let cnt = (smd_all.len() - 0x800) / 0x840;
+                for i in 0..cnt {
+                    let off = 0x800 + i * 0x840;
+                    let mut d = [0u8; 2048];
+                    d.copy_from_slice(&smd_all[off..off + 2048]);
+                    let mut o = [0u8; 64];
+                    o.copy_from_slice(&smd_all[off + 2048..off + 2112]);
+                    n.smd_pages.push(d);
+                    n.smd_spare.push(o);
+                }
+                n.smd_count = cnt;
+            }
+        }
         n.add(0x000000, block0);
         n.add(0x020000, load_cla(&bin, "C3520XELaFleur.bmp", 0x20000));
         n.add(0x040000, load_raw(&bin, "C3520XELaFleur.bootlcdact", 0x20000));
@@ -83,6 +106,9 @@ impl NandController {
     }
 
     pub fn read_image(&self, addr: u32) -> u8 {
+        if self.smd_count > 0 && (addr as usize) < self.smd_count * 2048 {
+            return self.smd_pages[addr as usize / 2048][addr as usize % 2048];
+        }
         for (o, b) in &self.sparse {
             if addr >= *o {
                 let i = (addr - *o) as usize;
@@ -112,6 +138,9 @@ impl NandController {
     /// Spare/OOB страницы: 3 байта ECC на каждый из 4 секторов по 512 байт
     /// со смещениями 1, 0x11, 0x21, 0x31 (как читает 0xC0A8A870).
     pub fn spare_for_page(&self, page_addr: u32) -> [u8; 0x40] {
+        if self.smd_count > 0 && (page_addr as usize) < self.smd_count * 2048 {
+            return self.smd_spare[page_addr as usize / 2048];
+        }
         let mut out = [0xFFu8; 0x40];
         for sec in 0..4u32 {
             let mut buf = [0u8; 512];
