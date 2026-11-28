@@ -258,6 +258,12 @@ fn main() {
     let p1c = cpu.va2pa(0xCA7D_966C); cpu.mem.write32(p1c, 0x0001_0000);
     let p18 = cpu.va2pa(0xCA7D_9668); cpu.mem.write32(p18, 0x40);
     let p10 = cpu.va2pa(0xCA7D_9660); cpu.mem.write32(p10, 1);
+    if workarounds {
+        // BML-геометрия: 4 сектора по 512 байт в странице 0x800.
+        // Прошивка делит 0x800 на этот байт в 0xC0A34AF0; нуль даёт
+        // деление на ноль -> fatal error 2 "Abnormal termination".
+        let p = cpu.va2pa(0xC9EF_740D); cpu.mem.write8(p, 4);
+    }
     cpu.mem.watch_addr = 0xC02D_2954;
     for i in 0..steps {
         if cpu.halted { break; }
