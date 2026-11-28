@@ -235,7 +235,7 @@ fn main() {
     }
     // Инициализация контекста 0xCA7D9650 (как в 0xC0A67DB8): база кучи —
     // свободный SDRAM выше .bss (~0xCA7E0000), зазор до стека 0x10000.
-    let p16 = cpu.va2pa(0xCA7D_9664); cpu.mem.write32(p16, 0xCA80_0000);
+    let p16 = cpu.va2pa(0xCA7D_9664); cpu.mem.write32(p16, 0xC9B0_0000); // база кучи ниже стека 0xC9B64BA8-0x10000
     let p1c = cpu.va2pa(0xCA7D_966C); cpu.mem.write32(p1c, 0x0001_0000);
     let p18 = cpu.va2pa(0xCA7D_9668); cpu.mem.write32(p18, 0x40);
     let p10 = cpu.va2pa(0xCA7D_9660); cpu.mem.write32(p10, 1);
