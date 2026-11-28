@@ -7,7 +7,7 @@ pub const BASE: u32 = 0x7D80_0000;
 
 pub struct NandController {
     sparse: Vec<(u32, Vec<u8>)>,
-    fifo: [u8; 2048],
+    fifo: [u8; 2112],
     command: u32,
     column: u32,
     row: u32,
@@ -20,6 +20,8 @@ pub struct NandController {
     pub irq_pending: bool,
     pub active: bool,
     pub irq_delay: u32,
+    /// IRQ src=17 доставлен: статус 0x7400202C временно отдаёт биты 9+10.
+    pub irq_servicing: bool,
     nand_cmd: u8,
     id_idx: usize,
 }
@@ -27,8 +29,8 @@ pub struct NandController {
 impl NandController {
     pub fn new(dir: &str) -> Self {
         let mut n = Self {
-            sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
-            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, irq_delay: 0, nand_cmd: 0, id_idx: 0,
+            sparse: Vec::new(), fifo: [0; 2112], command: 0xFF,
+            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, irq_delay: 0, irq_servicing: false, nand_cmd: 0, id_idx: 0,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -142,6 +144,7 @@ impl NandController {
             let id = [0xECu8,0xF1,0x00,0x95,0x40,0x00];
             for (i,&b) in id.iter().enumerate() { self.fifo[i] = b; }
             self.fifo_pos = 0; self.pio_remaining = 6; self.pio_done = false;
+            self.irq_delay = 120; self.irq_pending = true;
         } else if v == 0x70 {  // READ STATUS
             self.fifo[0] = 0xE0; self.fifo_pos = 0;
             self.pio_remaining = 1; self.pio_done = false;
@@ -152,10 +155,11 @@ impl NandController {
             self.fifo_pos = 0; self.pio_remaining = 2112; self.pio_done = false;
         } else {
             self.nand_cmd = v;
+            if v != 0x00 && v != 0x04 { self.irq_delay = 120; self.irq_pending = true; }
         }
     }
 
-    pub fn on_status_write(&mut self, _v: u32) { self.irq_pending = false; }
+    pub fn on_status_write(&mut self, _v: u32) { self.irq_pending = false; self.irq_servicing = false; }
 
     pub fn read(&mut self, addr: u32) -> u32 {
         let off = addr.wrapping_sub(BASE);
@@ -175,7 +179,7 @@ impl NandController {
             0x100 => 0,
             // PIO-чтение NAND: 0x74002020 выдаёт байты защёлкнутой страницы.
             0x20 => {
-                let v = self.fifo[self.fifo_pos & 2047] as u32;
+                let v = self.fifo[self.fifo_pos % 2112] as u32;
                 self.fifo_pos += 1;
                 if self.pio_remaining > 0 {
                     self.pio_remaining -= 1;
@@ -185,7 +189,7 @@ impl NandController {
             }
             _ => {
                 if off >= 0x800 && off < 0x800 + 2048 {
-                    let v = self.fifo[self.fifo_pos & 2047] as u32;
+                    let v = self.fifo[self.fifo_pos % 2112] as u32;
                     self.fifo_pos += 1;
                     v
                 } else { 0 }
@@ -199,6 +203,7 @@ impl NandController {
         match off {
             0x2C if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) => {
                 self.irq_pending = false;  // W1C: сброс активного IRQ
+                self.irq_servicing = false;
             }
             0x20 if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) => {
                 let v = value & 0xFF;
@@ -210,6 +215,7 @@ impl NandController {
                     let id = [0xECu8,0xF1,0x00,0x95,0x40,0x00,0x00,0x00];
                     for (i,&b) in id.iter().enumerate() { self.fifo[i] = b; }
                     self.fifo_pos = 0; self.pio_remaining = 6; self.pio_done = false;
+                    self.irq_delay = 120; self.irq_pending = true;
                 } else if self.nand_cmd == 0x90 {
                     self.id_idx += 1;
                 }

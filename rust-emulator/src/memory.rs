@@ -122,6 +122,7 @@ impl Memory {
                 }
                 if addr == 0x7400_202C {
                     let base = *self.mmio.get(&0x7400_202C).unwrap_or(&0x8000_0200);
+                    if self.nand.irq_servicing { return base | 0x600; }
                     if self.nand.pio_remaining > 0 { return (base & !0x400) | 0x200; }
                     return base | 0x600;
                 }

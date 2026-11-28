@@ -8,11 +8,24 @@ static CNT_VAL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new
 
 use arm::Arm;
 use memory::Memory;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use minifb::{Key, Window, WindowOptions};
+
+/// ROM String Sniffer: печатная ASCII-строка из регистра BL/BLX.
+fn rom_string(mem: &mut Memory, va: u32) -> Option<String> {
+    if !(0xC000_0000..0xC200_0000).contains(&va) { return None; }
+    let mut s = Vec::new();
+    for k in 0..80u32 {
+        let c = mem.read8(va.wrapping_add(k)) as u8;
+        if c == 0 { break; }
+        if !(0x20..=0x7E).contains(&c) { return None; }
+        s.push(c);
+    }
+    if s.len() >= 4 { Some(String::from_utf8_lossy(&s).into_owned()) } else { None }
+}
 
 fn parse_u32(s: &str) -> u32 {
     let s = s.trim_start_matches("0x");
@@ -217,6 +230,9 @@ fn main() {
     let mut re_count = 0u32;
     let mut timer_irqs = 0u64;
     let mut dump_seen = false;
+    let mut irqtrace = 0u32;
+    let mut strings_seen: HashSet<String> = HashSet::new();
+    let mut idle_hits = 0u64;
     let mut nand_id_cmd = false;
     let mut vec_restores = 0u64;
     let mut dbg_once = false;
@@ -398,6 +414,9 @@ fn main() {
             if cpu.mem.nand.irq_delay > 0 { cpu.mem.nand.irq_delay -= 1; }
             if cpu.mem.nand.irq_delay == 0 && cpu.mem.nand.irq_pending {
                 cpu.mem.nand.irq_pending = false;
+                cpu.mem.nand.irq_servicing = true;
+                let pr0=cpu.mem.nand.pio_remaining; let st0=cpu.mem.read32(0x7400_202C);
+                println!("[IRQDEL] step={} pio={} st={:08x}", i, pr0, st0);
                 cpu.mem.set_mmio(0x7000_102C, 17);
                 cpu.inject_irq();
             }
@@ -426,6 +445,32 @@ fn main() {
             let txt: String = raw.iter().map(|&c| if (0x20..=0x7e).contains(&c) { c as char } else { '.' }).collect();
             println!("[DUMPSTACK] {}", txt);
         }
+        if from_main && workarounds && i > 756_446 && irqtrace < 40 {
+            match pc {
+                0x0000_0018 | 0xC0A9_6454 | 0xC041_B2F8 | 0xC041_B302 | 0xC041_B306 | 0xC041_B310 | 0xC041_B31C | 0xC041_B348 | 0xC041_B354 | 0xC041_B364 | 0xC041_134A | 0xC00C_C2E0 => {
+                    irqtrace+=1;
+                    let st=cpu.mem.read32(0x7400_202C);
+                    let g=cpu.va2pa(0xCA76_8290); let gv=cpu.mem.read8(g);
+                    let f=cpu.va2pa(0xCA75_F810); let fv=cpu.mem.read8(f);
+                    let ip=cpu.mem.nand.irq_pending; let dl=cpu.mem.nand.irq_delay; let pr=cpu.mem.nand.pio_remaining;
+                    let it=cpu.mem.read32(0x7000102C);
+                    println!("[IRQTR] step={} pc={:08x} lr={:08x} st={:08x} g8290={:02x} flag={:02x} irqp={} delay={} pio={} intc={:08x} srv={}",i,pc,cpu.r[14],st,gv,fv,ip,dl,pr,it,cpu.mem.nand.irq_servicing);
+                }
+                _=>{}
+            }
+        }
+        // ROM String Sniffer (под флагом): ловим строки в аргументах вызовов.
+        if from_main && workarounds && i >= 755_000 && (i < 1_000_000 || (i & 4095) == 0) {
+            let regs = [cpu.r[0], cpu.r[1], cpu.r[2], cpu.r[3]];
+            let mut news = Vec::new();
+            for &r in &regs {
+                if let Some(st) = rom_string(&mut cpu.mem, r) {
+                    if strings_seen.insert(st.clone()) { news.push(st); }
+                }
+            }
+            for st in news { println!("[FW-LOG] step={} pc={:08x} \"{}\"", i, pc, st); }
+        }
+        if (pc & !1) == 0xC002_B52A { idle_hits += 1; }
         cpu.step(!quiet && i < 60);
         if from_main && pc == 0xC036_AB2C { re_count += 1; }
         if pc == 0xC033_219C && !saw_os_init { saw_os_init = true; println!("[OSINIT] step={}", i); }
@@ -508,6 +553,25 @@ fn main() {
         v.sort_by(|a, b| b.1.cmp(&a.1));
         v.into_iter().take(15).map(|(pc, n)| format!("{:08x}:{}", pc, n)).collect()
     };
+    if from_main {
+        let mut cnt = [0u32; 3];
+        let mut hits: Vec<(u32, u32)> = Vec::new();
+        let d = &cpu.mem.dram;
+        let mut off = 0usize;
+        while off + 4 <= d.len() {
+            let v = u32::from_le_bytes([d[off], d[off+1], d[off+2], d[off+3]]);
+            let idx = match v { 0x5441_534B => Some(0), 0x4849_5352 => Some(1), 0x5449_4D52 => Some(2), _ => None };
+            if let Some(k) = idx {
+                cnt[k] += 1;
+                if hits.len() < 12 { hits.push((0xC000_0000u32.wrapping_add(off as u32), v)); }
+            }
+            off += 4;
+        }
+        println!("[DRAMSCAN] words={} TASK={} HISR={} TIMR={}", d.len()/4, cnt[0], cnt[1], cnt[2]);
+        for &(a, v) in &hits { println!("[DRAMSCAN] va={:08x} sig={:08x}", a, v); }
+        println!("[TCT] TCT_Schedule calls=0 (символ отсутствует в MAIN; idle 0xC002B52A hits={})", idle_hits);
+        println!("[GUI] enabled={} open={} fb=240x320", gui, gui_open);
+    }
     println!("[HOTPC] {}", top.join(" "));
     println!("[ABORT] data={} prefetch={} far={:08x} fsr={:08x}", cpu.data_aborts, cpu.prefetch_aborts, cpu.fault_far, cpu.fault_fsr);
     for &(n, pc, far, fsr) in cpu.abort_first.iter().take(10) {

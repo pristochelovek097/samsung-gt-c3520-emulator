@@ -8961,3 +8961,105 @@ LISR не доставляет вектор в обработчик либо н�
 
 FW-LOG и скан `dram` не снимались; бутанимация не рисуется. Контроль
 без флага: 200M, `RE=0`, `TIMERIRQ=3979`, `LCD 4/2/2`, `WFI=0`, aborts=0.
+
+## Разбор IRQ-обработчика и снятие зависания 0xC009616A (2026-11-28)
+
+### Построчный дизассембл `0xC041B2F8..B364`
+
+```
+c041b2f8 push {r3-r7,lr}
+c041b2fa ldr r4,[pc,#0x6c]  ; 0xCA768240 (литерал c041b368)
+c041b2fc ldr r7,[pc,#0x6c]  ; 0x74002000 (литерал c041b36c)
+c041b2fe ldrb r6,[r4]
+c041b300 ldr r5,[r7,#0x2c]  ; r5 = статус 0x7400202C
+c041b302 lsls r0,r5,#0x16   ; бит 9  -> N
+c041b304 bpl c041b364       ; если снят — выход
+c041b306 lsls r0,r5,#0x15   ; бит 10 -> N
+c041b308 bpl c041b364       ; если снят — выход
+c041b30a movs r0,#0x50
+c041b30c ldrb r0,[r0,r4]    ; [0xCA768290] == 1?
+c041b30e cmp r0,#1
+c041b310 bne c041b31c
+c041b312 movs r0,#0xd
+c041b314 bl c041b2c8        ; ack/опрос контроллера, пока != 0
+c041b318 cmp r0,#0
+c041b31a bne c041b312
+c041b31c str r5,[r7,#0x2c]  ; запись статуса (cleanup)
+c041b31e movs r0,#0
+c041b320 str r0,[r7,#0x30]
+c041b322..c041b346  проверка байтов [r4+0x34/0x35], вызов 0xC041D468
+c041b348 ldr r2,[r4,#0x10]  ; callback #1
+c041b34c beq c041b354
+c041b34e ldr r0,[r4,#8]; ldr r1,[r4,#4]; blx r2
+c041b354 lsls r0,r6,#3; adds r0,r0,r4
+c041b358 ldr r2,[r0,#0x1c]  ; callback #2
+c041b35a beq c041b364
+c041b35e ldr r1,[r4,#4]; movs r0,#0; blx r2
+c041b364 pop {r3-r7,pc}
+```
+`0xC00CC2E0` — декремент байта по `[pc,#0x18]` (0xCA75F810) и переход
+по указателю `[0xCA75F814]`, когда счётчик дошёл до нуля.
+
+### Причина обрыва и исправление
+
+`memory.rs::read32(0x7400202C)` под workarounds при `pio_remaining>0`
+всегда возвращал `(base & !0x400)|0x200` — бит 10 снят, поэтому обработчик
+выходил сразу в `0xC041B364`, не вызывая `0xC00CC2E0`. Трассировка
+(`[IRQTR]`, шаг 756574) подтвердила `st=0x80000200`, `pio=6`.
+
+Под `--boot-workarounds` введено окно обслуживания IRQ:
+- `0x90` и фаза команды/адреса в `nand.rs` взводят `irq_delay=120` +
+  `irq_pending`; при доставке `src=17` выставляется `nand.irq_servicing=true`;
+- `memory.rs` пока `irq_servicing` отдаёт `base|0x600` (биты 9+10 сразу),
+  а после записи статуса обработчиком (`on_status_write`) окно закрывается;
+- исправлен латентный panic: FIFO был 2048 байт при READ PAGE на 2112;
+  теперь `[u8; 2112]`, индекс `% 2112`.
+
+### Трасса после исправления
+
+```
+[IRQDEL] step=758575 pio=2112 st=80000600
+[IRQTR]  step=758677 pc=c041b2f8 lr=c036879d st=80000600 g8290=01 pio=2112 srv=true
+[IRQTR]  step=758725 pc=c041b31c lr=c041b2ed st=80000600 srv=true
+[IRQTR]  step=758773 pc=c00cc2e0 lr=c041b365 st=80000200 srv=false
+```
+Цепочка `LISR 0xC0A96454 → 0xC041B2F8 → 0xC00CC2E0` замыкается,
+счётчик `0xCA75F810` обнуляется, `0xC009616A` ушёл из HOTPC.
+Команды NAND: `ff`, `ff`, `90`, `ff`, `30`, `30`, `30` — READ ID и READ PAGE
+доходят, `pio_remaining` загружается (6, затем 2112).
+
+### Новый HOTPC: `0xC0A95C30/34/38`
+
+```
+c0a95c2c ldr r1,[pc,#0x170] ; литерал 0xC9EF73A0 (c0a95da4)
+c0a95c30 ldrb r0,[r1,#1]    ; polling байта 0xC9EF73A1
+c0a95c34 cmp r0,#1
+c0a95c38 beq c0a95c30
+```
+Это **не MMIO**, а RAM-флаг тома BML; на входе (шаг 760452) байт уже 0,
+поэтому цикл завершается, а HOTPC копится из повторных вызовов (lr=0xC0411237).
+Дамп `watch_addr=0xC9EF73A0`: записей нет. Дальнейший прогресс упирается
+в отсутствие полноценной модели BML/DMA, не в статус NAND.
+
+### Полный прогон 200M с `--boot-workarounds` (ROM String Sniffer включён)
+
+```
+[NANDCMD] ff, ff, 90, ff(pio=6), 30, 30(pio=2112), 30(pio=2112)
+[FW-LOG]  step=758846 pc=c0402512 "Abnormal termination"
+[LCD]     commands=4 pixels=2 frames=2
+[TIMERIRQ] 3979   [RE] 0   [WFI] 0 data_abort=0 prefetch_abort=0
+[IRQOPEN] steps=199015426 halted=false
+CPSR=0x6000001f
+[DRAMSCAN] words=16777216 TASK=0 HISR=0 TIMR=0
+[TCT]     TCT_Schedule calls=0 (символ отсутствует в MAIN, idle 0xC002B52A hits=0)
+[GUI]     minifb fb=240x320 (в headless-прогоне окно не открывалось)
+[HOTPC]   c0a95c38:66355200 c0a95c30:66351104 c0a95c34:66347008 ...
+```
+`0xC009616A` в HOTPC отсутствует. Бутанимация по-прежнему не рисуется
+(кадров и TASK/HISR/TIMR нет), прошивка остаётся в аварийном пути
+`Abnormal termination`; честно сообщаем об этом.
+
+### Контроль без флага
+
+200M, `RE=0`, `TIMERIRQ=3979`, `LCD 4/2/2`, `WFI=0`, aborts=0,
+`CPSR=0x8000003F`. Регрессий нет; вся новая логика — под workarounds.
