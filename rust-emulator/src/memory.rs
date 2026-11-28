@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::lcd::LcdController;
 use crate::nand::NandController;
 
+pub static WORKAROUNDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub const TCM_SIZE: u32 = 0x0004_0000;
 const DRAM_BASE: u32 = 0xC000_0000;
 const DRAM_LEN: usize = 0x0400_0000;

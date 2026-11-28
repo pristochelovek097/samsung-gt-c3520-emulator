@@ -113,6 +113,9 @@ fn main() {
     let mut fb: Vec<u32> = vec![0; 240 * 320];
     let mut gui_open = gui && window.is_some();
     let skip_log = args.iter().any(|a| a == "--skip-log");
+    let workarounds = args.iter().any(|a| a == "--boot-workarounds")
+        || std::env::var("QMDC_WORKAROUNDS").map(|v| v == "1").unwrap_or(false);
+    memory::WORKAROUNDS.store(workarounds, std::sync::atomic::Ordering::Relaxed);
 
     let boot_path = Path::new(&dir).join("C3520XFLJ1_BIN/C3520XELaFleur.bootloader");
     let boot = fs::read(&boot_path).unwrap_or_default();
@@ -235,7 +238,7 @@ fn main() {
     }
     // Инициализация контекста 0xCA7D9650 (как в 0xC0A67DB8): база кучи —
     // свободный SDRAM выше .bss (~0xCA7E0000), зазор до стека 0x10000.
-    let p16 = cpu.va2pa(0xCA7D_9664); cpu.mem.write32(p16, 0xC9B0_0000); // база кучи ниже стека 0xC9B64BA8-0x10000
+    let p16 = cpu.va2pa(0xCA7D_9664); cpu.mem.write32(p16, if workarounds { 0xC9B0_0000 } else { 0xCA80_0000 }); // база кучи
     let p1c = cpu.va2pa(0xCA7D_966C); cpu.mem.write32(p1c, 0x0001_0000);
     let p18 = cpu.va2pa(0xCA7D_9668); cpu.mem.write32(p18, 0x40);
     let p10 = cpu.va2pa(0xCA7D_9660); cpu.mem.write32(p10, 1);
@@ -339,7 +342,7 @@ fn main() {
         // Периодический таймерный IRQ после 1M шагов (src0 → idx 0x40, безопасный).
         if from_main && i > 1_000_000 && (cpu.cpsr & 0x80) == 0
             && (cpu.cpsr & 0x1F) != 0x12 && (i % 50_000) == 0 {
-            cpu.mem.set_mmio(0x7000_102C, 17);
+            cpu.mem.set_mmio(0x7000_102C, if workarounds { 0 } else { 17 });
             cpu.inject_irq();
             timer_irqs += 1;
         }
@@ -391,7 +394,7 @@ fn main() {
         // Таблица C++-конструкторов после MMU-remap VA 0xC11BFF48 → PA 0xC00BFF48:
         // копируем исходные слова из ROM-образа в перемапленную страницу.
         // Вызов callback'а прошивкой消费ирует завершение — снимаем бит 10.
-        if from_main && cpu.mem.nand.irq_pending {
+        if from_main && workarounds && cpu.mem.nand.irq_pending {
             cpu.mem.nand.irq_pending = false;
             cpu.mem.set_mmio(0x7000_102C, 17);
             cpu.inject_irq();

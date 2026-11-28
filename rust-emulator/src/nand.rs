@@ -167,8 +167,10 @@ impl NandController {
         let off = addr.wrapping_sub(BASE);
         if off > 0xFFFF { return; }
         match off {
-            0x2C => { self.irq_pending = false; }  // W1C: сброс активного IRQ
-            0x20 => {
+            0x2C if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) => {
+                self.irq_pending = false;  // W1C: сброс активного IRQ
+            }
+            0x20 if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) => {
                 let v = value & 0xFF;
                 if v == 0xFF {   // RESET
                     self.pio_remaining = 0; self.pio_done = true;
