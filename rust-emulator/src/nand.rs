@@ -28,6 +28,8 @@ pub struct NandController {
     smd_pages: Vec<[u8; 2048]>,
     smd_spare: Vec<[u8; 64]>,
     smd_count: usize,
+    /// EFSPARTI: (phys_start, num_blocks, packed_start) для 12 разделов.
+    efsparti: Vec<(u32, u32, u32)>,
 }
 
 impl NandController {
@@ -35,7 +37,7 @@ impl NandController {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2112], command: 0xFF,
             column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false, irq_pending: false, active: false, irq_delay: 0, irq_servicing: false, nand_cmd: 0, id_idx: 0,
-            smd_pages: Vec::new(), smd_spare: Vec::new(), smd_count: 0,
+            smd_pages: Vec::new(), smd_spare: Vec::new(), smd_count: 0, efsparti: Vec::new(),
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -72,6 +74,20 @@ impl NandController {
                 }
                 n.smd_count = cnt;
             }
+            // EFSPARTI: 12 записей по 0x20 считаются от 0x13C. В файле
+            // разделы уложены вплотную: packed_start = накопленная сумма
+            // num_blocks предыдущих разделов (итого 0x1D8 блоков).
+            let mut packed = 0u32;
+            for i in 0..12usize {
+                let o = 0x13C + i * 0x20;
+                if o + 0x18 > smd_all.len() { break; }
+                let start = u32::from_le_bytes(smd_all[o + 0x10..o + 0x14].try_into().unwrap());
+                let count = u32::from_le_bytes(smd_all[o + 0x14..o + 0x18].try_into().unwrap());
+                if count != 0 && count <= 0x1D8 {
+                    n.efsparti.push((start, count, packed));
+                    packed += count;
+                }
+            }
         }
         n.add(0x000000, block0);
         n.add(0x020000, load_cla(&bin, "C3520XELaFleur.bmp", 0x20000));
@@ -105,9 +121,24 @@ impl NandController {
         if !data.is_empty() { self.sparse.push((off, data)); }
     }
 
+    /// Транслирует физический адрес NAND в номер упакованной страницы .smd.
+    fn smd_page(&self, addr: u32) -> Option<usize> {
+        if self.smd_count == 0 || self.efsparti.is_empty() { return None; }
+        let block = addr / 0x2_0000;
+        let in_block = (addr % 0x2_0000) / 0x800;
+        for &(start, count, packed) in &self.efsparti {
+            if block >= start && block < start.wrapping_add(count) {
+                let p = packed.wrapping_add(block - start).wrapping_mul(64).wrapping_add(in_block);
+                if (p as usize) < self.smd_count { return Some(p as usize); }
+                return None;
+            }
+        }
+        None
+    }
+
     pub fn read_image(&self, addr: u32) -> u8 {
-        if self.smd_count > 0 && (addr as usize) < self.smd_count * 2048 {
-            return self.smd_pages[addr as usize / 2048][addr as usize % 2048];
+        if let Some(p) = self.smd_page(addr) {
+            return self.smd_pages[p][(addr % 0x800) as usize];
         }
         for (o, b) in &self.sparse {
             if addr >= *o {
@@ -138,8 +169,8 @@ impl NandController {
     /// Spare/OOB страницы: 3 байта ECC на каждый из 4 секторов по 512 байт
     /// со смещениями 1, 0x11, 0x21, 0x31 (как читает 0xC0A8A870).
     pub fn spare_for_page(&self, page_addr: u32) -> [u8; 0x40] {
-        if self.smd_count > 0 && (page_addr as usize) < self.smd_count * 2048 {
-            return self.smd_spare[page_addr as usize / 2048];
+        if let Some(p) = self.smd_page(page_addr) {
+            return self.smd_spare[p];
         }
         let mut out = [0xFFu8; 0x40];
         for sec in 0..4u32 {
