@@ -15,13 +15,15 @@ pub struct NandController {
     status14: u32,
     /// Активная PIO-передача: число байт, ещё доступных в FIFO.
     pub pio_remaining: usize,
+    /// Операция завершена: бит 9 (0x200) статуса 0x7400202C.
+    pub pio_done: bool,
 }
 
 impl NandController {
     pub fn new(dir: &str) -> Self {
         let mut n = Self {
             sparse: Vec::new(), fifo: [0; 2048], command: 0xFF,
-            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0,
+            column: 0, row: 0, fifo_pos: 0, status14: 3, pio_remaining: 0, pio_done: false,
         };
         let bin = Path::new(dir).join("C3520XFLJ1_BIN");
         // Блок 0: честная таблица разделов EFSPARTI из factory-дампа .smd.
@@ -120,16 +122,20 @@ impl NandController {
         self.fifo_pos = 0;
     }
 
-    pub fn start_pio(&mut self, n: usize) { self.pio_remaining = n; self.fifo_pos = 0; }
+    pub fn start_pio(&mut self, n: usize) { self.pio_remaining = n; self.fifo_pos = 0; self.pio_done = false; }
 
     pub fn read(&mut self, addr: u32) -> u32 {
         let off = addr.wrapping_sub(BASE);
         if off > 0xFFFF { return 0; }
         match off {
             0x014 => self.status14,
-            0x2C if self.pio_remaining > 0 => {
-                let width = self.pio_remaining.min(4) - 1;
-                0x8000_0200u32 | ((width as u32) << 20)
+            0x2C if self.pio_remaining > 0 || self.pio_done => {
+                if self.pio_done {
+                    0x8000_0600u32   // бит 9 (done) + бит 10 (FIFO пуст)
+                } else {
+                    let width = self.pio_remaining.min(4) - 1;
+                    0x8000_0000u32 | ((width as u32) << 20)  // бит 10 снят
+                }
             }
             0x0C0 => 0x16C9,
             0x408 => 0xFFFF_FFFF,
@@ -138,7 +144,10 @@ impl NandController {
             0x20 => {
                 let v = self.fifo[self.fifo_pos & 2047] as u32;
                 self.fifo_pos += 1;
-                if self.pio_remaining > 0 { self.pio_remaining -= 1; }
+                if self.pio_remaining > 0 {
+                    self.pio_remaining -= 1;
+                    if self.pio_remaining == 0 { self.pio_done = true; }
+                }
                 v
             }
             _ => {
