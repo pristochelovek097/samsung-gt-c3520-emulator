@@ -113,7 +113,10 @@ impl Memory {
 
     #[inline]
     pub fn read32(&mut self, addr: u32) -> u32 {
-        if addr == 0x7400_202C { return *self.mmio.get(&addr).unwrap_or(&0x8000_0200); }
+        if addr == 0x7400_202C {
+            if self.nand.pio_remaining > 0 { return self.nand.read(addr); }
+            return *self.mmio.get(&addr).unwrap_or(&0x8000_0200);
+        }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 {
             self.io_seen.entry(addr & !3).or_insert((1, 0)).0 += 1;
             return self.nand.read(addr);
