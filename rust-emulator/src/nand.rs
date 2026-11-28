@@ -67,6 +67,37 @@ impl NandController {
         0xFF
     }
 
+    /// Hamming ECC 512-байтного сектора (24 бита чётности по позициям битов).
+    /// При равенстве кодов синдром 0xC0A8A870 равен нулю.
+    fn sector_ecc(data: &[u8]) -> [u8; 3] {
+        let mut parity = [0u8; 24];
+        for (i, &b) in data.iter().enumerate() {
+            for bit in 0..8u32 {
+                if (b >> bit) & 1 != 0 {
+                    let pos = (i as u32) * 8 + bit;
+                    for k in 0..24u32 { if (pos >> k) & 1 != 0 { parity[k as usize] ^= 1; } }
+                }
+            }
+        }
+        let mut out = [0u8; 3];
+        for k in 0..24usize { if parity[k] != 0 { out[k / 8] |= 1 << (k % 8); } }
+        out
+    }
+
+    /// Spare/OOB страницы: 3 байта ECC на каждый из 4 секторов по 512 байт
+    /// со смещениями 1, 0x11, 0x21, 0x31 (как читает 0xC0A8A870).
+    pub fn spare_for_page(&self, page_addr: u32) -> [u8; 0x40] {
+        let mut out = [0xFFu8; 0x40];
+        for sec in 0..4u32 {
+            let mut buf = [0u8; 512];
+            for i in 0..512usize { buf[i] = self.read_image(page_addr.wrapping_add(sec * 512 + i as u32)); }
+            let e = Self::sector_ecc(&buf);
+            let o = 1usize + sec as usize * 0x10;
+            out[o..o + 3].copy_from_slice(&e);
+        }
+        out
+    }
+
     fn latch(&mut self) {
         let start = self.row.wrapping_mul(2048).wrapping_add(self.column);
         for i in 0..2048 { self.fifo[i] = self.read_image(start.wrapping_add(i as u32)); }

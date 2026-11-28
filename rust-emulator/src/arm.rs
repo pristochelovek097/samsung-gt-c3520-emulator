@@ -447,7 +447,7 @@ impl<'a> Arm<'a> {
         }
 
         // LDRH/STRH/LDRSB/LDRSH (bits 27-25=000)
-        if bits == 0 && (insn & 0x0E00_0090) == 0x0000_0090 {
+        if bits == 0 && (insn & 0x0E00_0090) == 0x0000_0090 && (insn & 0x60) != 0 {
             let p = bit(insn, 24); let u = bit(insn, 23); let i = bit(insn, 22);
             let w = bit(insn, 21); let l = bit(insn, 20);
             let signed = bit(insn, 6); let half = bit(insn, 5);
@@ -544,12 +544,35 @@ impl<'a> Arm<'a> {
         if bits == 0 || bits == 1 {
             let opcode = (insn >> 21) & 0xF;
             let s = bit(insn, 20);
+            // SMLABB/SMLABT/SMLATB/SMLATT (ARMv5TE):
+            //   cond 00010 Rd Rn Rs 100x Rm  — маска 0x0FF00090 == 0x01000080
+            // Знаковые байты: бит 5 выбирает верхний байт первого сомножителя
+            // (Rn), бит 6 — верхний байт второго (Rs). Результат в Rd.
+            if (insn & 0x0FF0_0090) == 0x0100_0080 {
+                let rd = (insn >> 16) & 0xF;
+                let ra = (insn >> 12) & 0xF;
+                let rs = (insn >> 8) & 0xF;
+                let rm = insn & 0xF;
+                let top_n = bit(insn, 5);
+                let top_s = bit(insn, 6);
+                let rv = self.read_reg(rm);
+                let sv = self.read_reg(rs);
+                let a = if top_n { ((rv >> 8) & 0xFF) as i8 } else { (rv & 0xFF) as i8 };
+                let b = if top_s { ((sv >> 8) & 0xFF) as i8 } else { (sv & 0xFF) as i8 };
+                let res = ((a as i32).wrapping_mul(b as i32) as u32)
+                    .wrapping_add(self.read_reg(ra));
+                self.write_reg(rd, res);
+                if s { self.set_nz(res); }
+                return;
+            }
             let multiply = (insn & 0x0F00_0090) == 0x0000_0090;
             if multiply {
-                let rd = (insn >> 16) & 0xF; let ra = (insn >> 12) & 0xF;
-                let rm = insn & 0xF; let rs = (insn >> 8) & 0xF;
+                let rd = (insn >> 16) & 0xF;   // приёмник
+                let rn = (insn >> 12) & 0xF;   // слагаемое (addend), не портится
+                let rs = (insn >> 8) & 0xF;    // сомножитель
+                let rm = insn & 0xF;           // сомножитель
                 let mut res = self.read_reg(rm).wrapping_mul(self.read_reg(rs));
-                if bit(insn, 21) { res = res.wrapping_add(self.read_reg(ra)); }
+                if bit(insn, 21) { res = res.wrapping_add(self.read_reg(rn)); }
                 self.write_reg(rd, res);
                 if s { self.set_nz(res); }
                 return;
