@@ -47,6 +47,15 @@ impl NandController {
         n.add(0xC80000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_NCB_DSP", 0x60000));
         n.add(0xCE0000, load_cla(&bin, "C3520XELaFleur.cla/ER_FLASH_CB_PAGE1", 0x600000));
         n.add(0x12E0000, load_cla(&bin, "C3520XELaFleur.cla/ER_RAM_CB", 0x40000));
+        // Служебный блок 0x3FF (0x07FE0000): 0x68-байтная структура тома,
+        // которую 0xC0064C68 читает в 0xC9EF5ACC и проверяет 0xC007A528.
+        let mut svc = vec![0u8; 0x800];
+        svc[0..4].copy_from_slice(&0x0102_0304u32.to_le_bytes());
+        svc[8..12].copy_from_slice(&1u32.to_le_bytes());
+        svc[0x64..0x68].copy_from_slice(&0x0102_0304u32.to_le_bytes());
+        let sum: u32 = svc[..0x68].iter().map(|&x| x as u32).sum();
+        svc[0x60] = ((0u32).wrapping_sub(sum)) as u8;   // сумма 0x68 байт == 0 (mod 256)
+        n.add(0x07FE0000, svc);
         n
     }
 
