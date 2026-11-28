@@ -127,6 +127,29 @@ impl NandController {
 
     pub fn start_pio(&mut self, n: usize) { self.pio_remaining = n; self.fifo_pos = 0; self.pio_done = false; }
 
+    /// Прозрачный перехват записи в 0x74002020 (данные/команды NAND).
+    pub fn on_data_write(&mut self, v: u8) {
+        if v == 0xFF {  // RESET
+            self.pio_remaining = 0; self.pio_done = true; self.irq_pending = true;
+        } else if v == 0x90 {  // READ ID
+            let id = [0xECu8,0xF1,0x00,0x95,0x40,0x00];
+            for (i,&b) in id.iter().enumerate() { self.fifo[i] = b; }
+            self.fifo_pos = 0; self.pio_remaining = 6; self.pio_done = false;
+        } else if v == 0x70 {  // READ STATUS
+            self.fifo[0] = 0xE0; self.fifo_pos = 0;
+            self.pio_remaining = 1; self.pio_done = false;
+        } else if v == 0x30 {  // READ START
+            let page = self.row.wrapping_mul(2048).wrapping_add(self.column);
+            for i in 0..2048usize { self.fifo[i] = self.read_image(page.wrapping_add(i as u32)); }
+            for i in 0..64usize { self.fifo[2048+i] = 0xFF; }
+            self.fifo_pos = 0; self.pio_remaining = 2112; self.pio_done = false;
+        } else {
+            self.nand_cmd = v;
+        }
+    }
+
+    pub fn on_status_write(&mut self, _v: u32) { self.irq_pending = false; }
+
     pub fn read(&mut self, addr: u32) -> u32 {
         let off = addr.wrapping_sub(BASE);
         if off > 0xFFFF { return 0; }

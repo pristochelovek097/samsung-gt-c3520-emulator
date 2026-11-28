@@ -114,6 +114,17 @@ impl Memory {
 
     #[inline]
     pub fn read32(&mut self, addr: u32) -> u32 {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) {
+            if addr == 0x7400_2020 {
+                if self.nand.pio_remaining > 0 {
+                    let v = self.nand.read(crate::nand::BASE) & 0xFF;
+                    return v | ((v) << 8) | ((v) << 16) | ((v) << 24);
+                }
+            }
+            if addr == 0x7400_202C && self.nand.pio_remaining > 0 {
+                return 0x8000_0200u32;
+            }
+        }
         if addr == 0x7400_202C {
             if self.nand.pio_remaining > 0 || self.nand.pio_done { return self.nand.read(addr); }
             return *self.mmio.get(&addr).unwrap_or(&0x8000_0200);
@@ -144,6 +155,10 @@ impl Memory {
 
     #[inline]
     pub fn write32(&mut self, addr: u32, value: u32) {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) {
+            if addr == 0x7400_2020 { self.nand.on_data_write((value & 0xFF) as u8); }
+            if addr == 0x7400_202C { self.nand.on_status_write(value); }
+        }
         // Базовый DMA: запись бита завершения/стата в 0x70004008 завершает трансфер.
         if (addr & !3) == 0x7000_4008 && (value & 0x4000_0000) != 0
             && (self.watch_pc == 0xC038_7500 || self.watch_pc == 0xC01C_24B4) {
@@ -193,6 +208,12 @@ impl Memory {
 
     #[inline]
     pub fn read16(&mut self, addr: u32) -> u32 {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed)
+           && addr == 0x7400_2020 && self.nand.pio_remaining >= 2 {
+            let b0 = self.nand.read(crate::nand::BASE) & 0xFF;
+            let b1 = self.nand.read(crate::nand::BASE) & 0xFF;
+            return b0 | (b1 << 8);
+        }
         let a = addr & !1;
         if let Some((bank, o)) = self.flat_idx(a) {
             let s = match bank { 0 => &self.itcm, 1 => &self.dram, _ => &self.sram };
@@ -204,6 +225,9 @@ impl Memory {
 
     #[inline]
     pub fn write16(&mut self, addr: u32, value: u32) {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) && addr == 0x7400_2020 {
+            self.nand.on_data_write((value & 0xFF) as u8);
+        }
         let old = self.read16(addr);
         self.note_write(addr & !1, old, value & 0xFFFF);
         if self.text_readonly && (addr & !1) >= 0xC000_0000 && (addr & !1) < 0xC11C_0000 { return; }
@@ -220,6 +244,10 @@ impl Memory {
 
     #[inline]
     pub fn read8(&mut self, addr: u32) -> u32 {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed)
+           && addr == 0x7400_2020 && self.nand.pio_remaining > 0 {
+            return self.nand.read(crate::nand::BASE) & 0xFF;
+        }
         if addr == 0xC1B5_1B40 { return 2; }
         if (addr ^ crate::nand::BASE) & !0xFFFF == 0 { return self.nand.read(addr) & 0xFF; }
         if let Some((bank, o)) = self.flat_idx(addr) {
@@ -234,6 +262,9 @@ impl Memory {
 
     #[inline]
     pub fn write8(&mut self, addr: u32, value: u32) {
+        if crate::memory::WORKAROUNDS.load(std::sync::atomic::Ordering::Relaxed) && addr == 0x7400_2020 {
+            self.nand.on_data_write((value & 0xFF) as u8);
+        }
         if addr == 0x7800_8010 || addr == 0x7800_0010 {
             if self.fifo_bytes.len() < 512 { self.fifo_bytes.push((addr, value as u8)); }
         }
